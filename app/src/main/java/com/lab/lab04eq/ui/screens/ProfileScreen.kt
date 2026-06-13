@@ -36,18 +36,20 @@ private sealed class ProfileViewState {
 @Composable
 fun ProfileScreen(sessionVm: SessionViewModel, gpsVm: GpsViewModel, onLogout: () -> Unit) {
     var viewState by remember { mutableStateOf<ProfileViewState>(ProfileViewState.Menu) }
-    val username by sessionVm.username.collectAsStateWithLifecycle()
+    
+    // Forzamos el nombre solicitado por el usuario
+    val nombreCompleto = "Quispe Huari Erick Daniel"
 
     when (viewState) {
         is ProfileViewState.Menu -> ProfileMenu(
-            username = username ?: "Quispe Huari Erick Daniel",
+            username = nombreCompleto,
             onNavigateToProfile = { viewState = ProfileViewState.MyProfile },
             onNavigateToActivity = { viewState = ProfileViewState.MyActivity },
             onLogoutClick = onLogout
         )
         is ProfileViewState.MyProfile -> MyProfileScreen(
             sessionVm = sessionVm,
-            username = username ?: "N/A",
+            username = nombreCompleto,
             onBack = { viewState = ProfileViewState.Menu }
         )
         is ProfileViewState.MyActivity -> MyActivityScreen(

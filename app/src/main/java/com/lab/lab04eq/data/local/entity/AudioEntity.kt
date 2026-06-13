@@ -1,0 +1,16 @@
+package com.lab.lab04eq.data.local.entity
+
+import androidx.room.Entity
+import androidx.room.PrimaryKey
+
+@Entity(tableName = "audio")
+data class AudioEntity(
+    @PrimaryKey(autoGenerate = true)
+    val id: Long = 0L,
+
+    val rutaArchivo: String,
+    val duracionMs: Long,
+    val tamanoBytes: Long,
+    val formato: String,              // "AAC" o "MP3"
+    val timestamp: Long
+)

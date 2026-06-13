@@ -82,6 +82,9 @@ dependencies {
     // ── Accompanist (Gestor de Permisos) ──
     implementation("com.google.accompanist:accompanist-permissions:0.34.0")
 
+    // ── WorkManager (Notificaciones diferidas y background) ──
+    implementation("androidx.work:work-runtime-ktx:2.9.0") //
+
     // ── Entorno de Pruebas ──
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
