@@ -59,7 +59,7 @@ fun AppNavigation(gpsViewModel: GpsViewModel, sessionViewModel: SessionViewModel
     val mediaViewModel: MediaViewModel = viewModel(factory = MediaViewModelFactory(contextApp.mediaRepository, contextApp.fileStorage))
     val audioViewModel: AudioViewModel = viewModel(factory = AudioViewModel.Factory(contextApp, contextApp.audioRepository, contextApp.fileStorage))
     val syncViewModel: SyncViewModel = viewModel(factory = SyncViewModel.Factory(contextApp, contextApp.gpsRepository, contextApp.mediaRepository, contextApp.audioRepository))
-    val historyViewModel: HistoryViewModel = viewModel(factory = HistoryViewModel.Factory(contextApp.gpsRepository, contextApp.mediaRepository, contextApp.audioRepository))
+    val historyViewModel: HistoryViewModel = viewModel(factory = HistoryViewModel.Factory(contextApp.gpsRepository, contextApp.mediaRepository, contextApp.audioRepository, contextApp.fileStorage))
 
     // Pestañas visibles en el menú inferior
     val tabs = listOf(

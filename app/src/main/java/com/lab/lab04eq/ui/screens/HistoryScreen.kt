@@ -7,9 +7,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
 import com.lab.lab04eq.model.ActivityItem
 import com.lab.lab04eq.ui.viewmodel.HistoryViewModel
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -18,11 +21,26 @@ fun HistoryScreen(historyViewModel: HistoryViewModel) {
     val items by historyViewModel.historyItems.collectAsState()
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Text(
-            text = "Historial de Actividades Unificado",
-            style = MaterialTheme.typography.headlineSmall,
-            modifier = Modifier.padding(bottom = 16.dp)
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Historial Unificado",
+                style = MaterialTheme.typography.headlineSmall
+            )
+            
+            IconButton(onClick = { 
+                historyViewModel.exportToCsv { file ->
+                    // En un caso real aquí usaríamos un Intent para compartir el archivo
+                }
+            }) {
+                Text("📊 CSV", style = MaterialTheme.typography.labelSmall)
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
 
         if (items.isEmpty()) {
             Box(
@@ -30,7 +48,7 @@ fun HistoryScreen(historyViewModel: HistoryViewModel) {
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = "No hay registros capturados en este laboratorio.",
+                    text = "No hay registros capturados.",
                     style = MaterialTheme.typography.bodyLarge
                 )
             }
@@ -39,7 +57,6 @@ fun HistoryScreen(historyViewModel: HistoryViewModel) {
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = Modifier.fillMaxSize()
             ) {
-                // Sintaxis corregida para el iterador de elementos con llave única en Compose
                 items(
                     items = items,
                     key = { item -> "${item.javaClass.simpleName}_${item.id}" }
@@ -68,45 +85,46 @@ fun HistoryCard(item: ActivityItem) {
             }
         )
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    text = when (item) {
-                        is ActivityItem.GpsGoogle -> "🛰️ Ubicación (Google GPS)"
-                        is ActivityItem.GpsSensors -> "🎛️ Ubicación (Hardware Sensores)"
-                        is ActivityItem.Photo -> "📸 Captura Fotográfica"
-                        is ActivityItem.Video -> "📹 Grabación de Video"
-                        is ActivityItem.Audio -> "🎙️ Nota de Audio"
-                    },
-                    style = MaterialTheme.typography.titleMedium
+        Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            // Mostrar miniatura si es Multimedia
+            if (item is ActivityItem.Photo || item is ActivityItem.Video) {
+                val path = if (item is ActivityItem.Photo) item.rutaArchivo else (item as ActivityItem.Video).rutaArchivo
+                AsyncImage(
+                    model = File(path),
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(60.dp)
+                        .padding(end = 12.dp),
+                    contentScale = ContentScale.Crop
                 )
-                Text(text = fechaLegible, style = MaterialTheme.typography.bodySmall)
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = when (item) {
+                            is ActivityItem.GpsGoogle -> "🛰️ Google GPS"
+                            is ActivityItem.GpsSensors -> "🎛️ Sensores"
+                            is ActivityItem.Photo -> "📸 Foto"
+                            is ActivityItem.Video -> "📹 Video"
+                            is ActivityItem.Audio -> "🎙️ Audio"
+                        },
+                        style = MaterialTheme.typography.titleSmall
+                    )
+                    Text(text = fechaLegible, style = MaterialTheme.typography.labelSmall)
+                }
 
-            // Renderizado de la data según la sealed class del modelo
-            when (item) {
-                is ActivityItem.GpsGoogle -> {
-                    Text("Latitud: ${item.latitud}")
-                    Text("Longitud: ${item.longitud}")
-                }
-                is ActivityItem.GpsSensors -> {
-                    Text("Latitud: ${item.latitud}")
-                    Text("Longitud: ${item.longitud}")
-                }
-                is ActivityItem.Photo -> {
-                    Text("Ruta: ${item.rutaArchivo.substringAfterLast("/")}")
-                }
-                is ActivityItem.Video -> {
-                    Text("Ruta: ${item.rutaArchivo.substringAfterLast("/")}")
-                }
-                is ActivityItem.Audio -> {
-                    Text("Formato: ${item.formato}")
-                    Text("Ruta: ${item.rutaArchivo.substringAfterLast("/")}")
+                Spacer(modifier = Modifier.height(4.dp))
+
+                when (item) {
+                    is ActivityItem.GpsGoogle -> Text("Lat: ${item.latitud}, Lon: ${item.longitud}", style = MaterialTheme.typography.bodySmall)
+                    is ActivityItem.GpsSensors -> Text("Lat: ${item.latitud}, Lon: ${item.longitud}", style = MaterialTheme.typography.bodySmall)
+                    is ActivityItem.Photo -> Text("Img: ${item.rutaArchivo.substringAfterLast("/")}", style = MaterialTheme.typography.bodySmall)
+                    is ActivityItem.Video -> Text("Vid: ${item.rutaArchivo.substringAfterLast("/")}", style = MaterialTheme.typography.bodySmall)
+                    is ActivityItem.Audio -> Text("Aud: ${item.rutaArchivo.substringAfterLast("/")}", style = MaterialTheme.typography.bodySmall)
                 }
             }
         }

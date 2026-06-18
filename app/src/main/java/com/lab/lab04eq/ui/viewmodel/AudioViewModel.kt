@@ -43,6 +43,10 @@ class AudioViewModel(
     private val _elapsedSeconds = MutableStateFlow(0)
     val elapsedSeconds = _elapsedSeconds.asStateFlow()
 
+    // Nueva funcionalidad: Amplitud para barra de nivel
+    private val _amplitude = MutableStateFlow(0f)
+    val amplitude = _amplitude.asStateFlow()
+
     private var recorder: MediaRecorder? = null
     private var currentFile: File? = null
     private var startTimeMs: Long = 0L
@@ -77,8 +81,12 @@ class AudioViewModel(
 
             timerJob = viewModelScope.launch {
                 while (_isRecording.value) {
-                    delay(1000)
-                    _elapsedSeconds.value++
+                    delay(100) // Actualización más frecuente para la barra de volumen
+                    _elapsedSeconds.value = ((System.currentTimeMillis() - startTimeMs) / 1000).toInt()
+                    
+                    // Obtener amplitud (0 a 32767) y normalizar
+                    val maxAmp = recorder?.maxAmplitude ?: 0
+                    _amplitude.value = maxAmp.toFloat() / 32767f
                 }
             }
             Log.d("AudioViewModel", "Grabación iniciada: ${file.absolutePath}")
@@ -133,6 +141,7 @@ class AudioViewModel(
         currentFile = null
         _isRecording.value = false
         _elapsedSeconds.value = 0
+        _amplitude.value = 0f
     }
 
     override fun onCleared() {

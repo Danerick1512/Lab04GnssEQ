@@ -9,6 +9,7 @@ class FileStorageManager(private val context: Context) {
     private val photosDir = File(context.filesDir, "photos").apply { mkdirs() }
     private val videosDir = File(context.filesDir, "videos").apply { mkdirs() }
     private val audiosDir = File(context.filesDir, "audios").apply { mkdirs() }
+    private val exportsDir = File(context.filesDir, "exports").apply { mkdirs() }
 
     // Genera un archivo único basado en el tiempo actual para Foto (.jpg)
     fun newPhotoFile(): File =
@@ -21,6 +22,15 @@ class FileStorageManager(private val context: Context) {
     // Genera un archivo único para Audio (.m4a)
     fun newAudioFile(extension: String = "m4a"): File =
         File(audiosDir, "audio_${System.currentTimeMillis()}.$extension")
+
+    /**
+     * Guarda una cadena de texto (CSV) en un archivo físico en el directorio de exportaciones.
+     */
+    fun saveCsvExport(content: String): File {
+        val file = File(exportsDir, "export_${System.currentTimeMillis()}.csv")
+        file.writeText(content)
+        return file
+    }
 
     // Elimina un archivo físico del almacenamiento del teléfono
     fun deleteFile(path: String): Boolean =

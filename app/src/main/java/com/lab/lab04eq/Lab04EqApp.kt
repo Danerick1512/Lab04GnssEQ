@@ -1,6 +1,9 @@
 package com.lab.lab04eq
 
 import android.app.Application
+import coil.ImageLoader
+import coil.ImageLoaderFactory
+import coil.decode.VideoFrameDecoder
 import com.lab.lab04eq.data.local.AppDatabase
 import com.lab.lab04eq.data.local.FileStorageManager
 import com.lab.lab04eq.data.repository.AudioRepository
@@ -8,9 +11,8 @@ import com.lab.lab04eq.data.repository.GpsRepository
 import com.lab.lab04eq.data.repository.MediaRepository
 import com.lab.lab04eq.data.session.SessionManager
 
-class Lab04EqApp : Application() {
+class Lab04EqApp : Application(), ImageLoaderFactory {
 
-    // Contenedores globales para la inyección de dependencias manual (Conservados de tu Lab 4)
     lateinit var database: AppDatabase
         private set
 
@@ -20,7 +22,6 @@ class Lab04EqApp : Application() {
     lateinit var sessionManager: SessionManager
         private set
 
-    // NUEVOS: Contenedores globales agregados para los componentes del Lab 5
     lateinit var fileStorage: FileStorageManager
         private set
 
@@ -33,14 +34,21 @@ class Lab04EqApp : Application() {
     override fun onCreate() {
         super.onCreate()
 
-        // Inicialización única de instancias globales (Lab 4)
         database = AppDatabase.obtenerBaseDatos(this)
         gpsRepository = GpsRepository(database.gpsGoogleDao(), database.gpsSensorsDao())
         sessionManager = SessionManager(this)
 
-        // NUEVOS: Inicialización de la infraestructura multimedia del Lab 5
         fileStorage = FileStorageManager(this)
         mediaRepository = MediaRepository(database.mediaDao(), fileStorage)
         audioRepository = AudioRepository(database.audioDao(), fileStorage)
+    }
+
+    override fun newImageLoader(): ImageLoader {
+        return ImageLoader.Builder(this)
+            .components {
+                add(VideoFrameDecoder.Factory())
+            }
+            .crossfade(true)
+            .build()
     }
 }

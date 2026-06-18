@@ -11,10 +11,13 @@ import com.lab.lab04eq.data.repository.AudioRepository
 import com.lab.lab04eq.data.repository.GpsRepository
 import com.lab.lab04eq.data.repository.MediaRepository
 import com.lab.lab04eq.workers.DelayedNotificationWorker
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import java.util.UUID
 import java.util.concurrent.TimeUnit
 
 // Clase de datos limpia para representar el estado consolidado de registros en la app
@@ -35,6 +38,10 @@ class SyncViewModel(
 ) : ViewModel() {
 
     private val workManager = WorkManager.getInstance(context.applicationContext)
+
+    // Estado para rastrear el último WorkRequest programado
+    private val _lastWorkId = MutableStateFlow<UUID?>(null)
+    val lastWorkId = _lastWorkId.asStateFlow()
 
     // Fusión reactiva de 5 flujos diferentes para producir las estadísticas unificadas del Laboratorio
     val syncCounts: StateFlow<SyncCounts> = combine(
@@ -73,7 +80,18 @@ class SyncViewModel(
             .setInitialDelay(10, TimeUnit.SECONDS)
             .build()
 
+        _lastWorkId.value = notificationRequest.id
         workManager.enqueue(notificationRequest)
+    }
+
+    /**
+     * Cancela la última notificación programada si aún no se ha ejecutado
+     */
+    fun cancelDelayedNotification() {
+        _lastWorkId.value?.let { uuid ->
+            workManager.cancelWorkById(uuid)
+            _lastWorkId.value = null
+        }
     }
 
     /**

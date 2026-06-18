@@ -78,6 +78,7 @@ dependencies {
 
     // ── Coil (Carga optimizada de imágenes) ──
     implementation("io.coil-kt:coil-compose:2.7.0")
+    implementation("io.coil-kt:coil-video:2.7.0")
 
     // ── Accompanist (Gestor de Permisos) ──
     implementation("com.google.accompanist:accompanist-permissions:0.34.0")

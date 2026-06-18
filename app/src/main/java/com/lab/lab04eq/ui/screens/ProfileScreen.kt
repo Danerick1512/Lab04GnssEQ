@@ -1,6 +1,7 @@
 package com.lab.lab04eq.ui.screens
 
 import android.os.Build
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
@@ -11,6 +12,7 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Receipt
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -22,8 +24,11 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lab.lab04eq.ui.viewmodel.SessionViewModel
 import com.lab.lab04eq.ui.viewmodel.GpsViewModel
+import com.lab.lab04eq.ui.viewmodel.HistoryViewModel
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.lab.lab04eq.Lab04EqApp
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -36,9 +41,11 @@ private sealed class ProfileViewState {
 @Composable
 fun ProfileScreen(sessionVm: SessionViewModel, gpsVm: GpsViewModel, onLogout: () -> Unit) {
     var viewState by remember { mutableStateOf<ProfileViewState>(ProfileViewState.Menu) }
-    
-    // Forzamos el nombre solicitado por el usuario
     val nombreCompleto = "Quispe Huari Erick Daniel"
+    
+    // Obtenemos el HistoryViewModel para la pantalla de actividad
+    val contextApp = LocalContext.current.applicationContext as Lab04EqApp
+    val historyVm: HistoryViewModel = viewModel(factory = HistoryViewModel.Factory(contextApp.gpsRepository, contextApp.mediaRepository, contextApp.audioRepository, contextApp.fileStorage))
 
     when (viewState) {
         is ProfileViewState.Menu -> ProfileMenu(
@@ -53,7 +60,7 @@ fun ProfileScreen(sessionVm: SessionViewModel, gpsVm: GpsViewModel, onLogout: ()
             onBack = { viewState = ProfileViewState.Menu }
         )
         is ProfileViewState.MyActivity -> MyActivityScreen(
-            gpsVm = gpsVm,
+            historyVm = historyVm,
             onBack = { viewState = ProfileViewState.Menu }
         )
     }
@@ -145,26 +152,36 @@ private fun MyProfileScreen(sessionVm: SessionViewModel, username: String, onBac
 }
 
 @Composable
-private fun MyActivityScreen(gpsVm: GpsViewModel, onBack: () -> Unit) {
-    val history by gpsVm.comparativeHistory.collectAsStateWithLifecycle()
+private fun MyActivityScreen(historyVm: HistoryViewModel, onBack: () -> Unit) {
+    val context = LocalContext.current
+    val history by historyVm.historyItems.collectAsStateWithLifecycle()
     val dateFormat = remember { SimpleDateFormat("dd/MM HH:mm:ss", Locale.getDefault()) }
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, contentDescription = "Atrás") }
-            Text("Historial de Actividad", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text("Historial de Actividad", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            
+            // Botón de exportación CSV
+            IconButton(onClick = {
+                historyVm.exportToCsv { file ->
+                    Toast.makeText(context, "Exportado: ${file.name}", Toast.LENGTH_LONG).show()
+                }
+            }) {
+                Icon(Icons.Default.Download, contentDescription = "Exportar CSV")
+            }
         }
         
         if (history.isEmpty()) {
             Card(modifier = Modifier.fillMaxWidth()) {
                 Box(modifier = Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
-                    Text("No hay archivos multimedia registrados en este ciclo.")
+                    Text("No hay registros en este ciclo.")
                 }
             }
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxSize()) {
-                items(items = history, key = { it.timestamp }) { record ->
-                    ComparativeCaptureCard(record, dateFormat)
+                items(items = history, key = { item -> "${item.javaClass.simpleName}_${item.id}" }) { item ->
+                    HistoryCard(item = item)
                 }
             }
         }

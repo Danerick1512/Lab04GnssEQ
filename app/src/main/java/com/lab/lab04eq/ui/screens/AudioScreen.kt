@@ -17,6 +17,7 @@ import com.lab.lab04eq.ui.viewmodel.AudioViewModel
 fun AudioScreen(audioViewModel: AudioViewModel) {
     val isRecording by audioViewModel.isRecording.collectAsState()
     val elapsedSeconds by audioViewModel.elapsedSeconds.collectAsState()
+    val amplitude by audioViewModel.amplitude.collectAsState()
     val audioCount by audioViewModel.count.collectAsState()
 
     val recordAudioPermissionState = rememberPermissionState(
@@ -54,11 +55,26 @@ fun AudioScreen(audioViewModel: AudioViewModel) {
             }
         } else {
             if (isRecording) {
-                Text(
-                    text = "🔴 Grabando: ${elapsedSeconds}s",
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.headlineMedium
-                )
+                Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = "🔴 Grabando: ${elapsedSeconds}s",
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.headlineMedium
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        // Barra de nivel de volumen
+                        LinearProgressIndicator(
+                            progress = { amplitude },
+                            modifier = Modifier.fillMaxWidth().height(8.dp),
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
+
                 Button(
                     onClick = { audioViewModel.stopRecording() },
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),

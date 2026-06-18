@@ -3,6 +3,7 @@ package com.lab.lab04eq.ui.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.lab.lab04eq.data.local.FileStorageManager
 import com.lab.lab04eq.data.repository.AudioRepository
 import com.lab.lab04eq.data.repository.GpsRepository
 import com.lab.lab04eq.data.repository.MediaRepository
@@ -11,11 +12,14 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+import java.io.File
 
 class HistoryViewModel(
     private val gpsRepository: GpsRepository,
     private val mediaRepository: MediaRepository,
-    private val audioRepository: AudioRepository
+    private val audioRepository: AudioRepository,
+    private val fileStorage: FileStorageManager
 ) : ViewModel() {
 
     // Mezcla reactiva y polimórfica de todas las fuentes de datos ordenadas cronológicamente
@@ -97,17 +101,43 @@ class HistoryViewModel(
     )
 
     /**
+     * Exporta el historial actual a un archivo CSV.
+     */
+    fun exportToCsv(onResult: (File) -> Unit) {
+        viewModelScope.launch {
+            val items = historyItems.value
+            val csvBuilder = StringBuilder("Timestamp,Tipo,Ruta/Coordenadas\n")
+            
+            items.forEach { item ->
+                val type = item.javaClass.simpleName
+                val detail = when (item) {
+                    is ActivityItem.GpsGoogle -> "${item.latitud};${item.longitud}"
+                    is ActivityItem.GpsSensors -> "${item.latitud};${item.longitud}"
+                    is ActivityItem.Photo -> item.rutaArchivo
+                    is ActivityItem.Video -> item.rutaArchivo
+                    is ActivityItem.Audio -> item.rutaArchivo
+                }
+                csvBuilder.append("${item.timestamp},$type,$detail\n")
+            }
+            
+            val file = fileStorage.saveCsvExport(csvBuilder.toString())
+            onResult(file)
+        }
+    }
+
+    /**
      * Factory obligatorio para inyectar los repositorios globales desde tu Lab04EqApp
      */
     class Factory(
         private val gpsRepository: GpsRepository,
         private val mediaRepository: MediaRepository,
-        private val audioRepository: AudioRepository
+        private val audioRepository: AudioRepository,
+        private val fileStorage: FileStorageManager
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             if (modelClass.isAssignableFrom(HistoryViewModel::class.java)) {
-                return HistoryViewModel(gpsRepository, mediaRepository, audioRepository) as T
+                return HistoryViewModel(gpsRepository, mediaRepository, audioRepository, fileStorage) as T
             }
             throw IllegalArgumentException("Clase ViewModel desconocida: ${modelClass.name}")
         }

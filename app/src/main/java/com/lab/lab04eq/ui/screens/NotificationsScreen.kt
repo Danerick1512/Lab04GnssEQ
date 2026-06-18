@@ -12,7 +12,7 @@ import com.lab.lab04eq.ui.viewmodel.SyncViewModel
 fun NotificationsScreen(syncViewModel: SyncViewModel) {
     var titulo by remember { mutableStateOf("Laboratorio 5") }
     var mensaje by remember { mutableStateOf("¡Alerta en segundo plano completada con éxito!") }
-    var notificado by remember { mutableStateOf(false) }
+    val lastWorkId by syncViewModel.lastWorkId.collectAsState()
 
     Column(
         modifier = Modifier.fillMaxSize().padding(16.dp),
@@ -38,19 +38,31 @@ fun NotificationsScreen(syncViewModel: SyncViewModel) {
         Button(
             onClick = {
                 syncViewModel.scheduleDelayedNotification(titulo, mensaje)
-                notificado = true
             },
             modifier = Modifier.fillMaxWidth().height(50.dp)
         ) {
             Text("🔔 Agendar Notificación (10s delay)")
         }
 
-        if (notificado) {
-            Text(
-                text = "⏳ Tarea encolada en WorkManager. Espera 10 segundos...",
-                color = MaterialTheme.colorScheme.primary,
-                style = MaterialTheme.typography.bodyMedium
-            )
+        if (lastWorkId != null) {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = "⏳ Tarea programada (ID: ${lastWorkId.toString().take(8)}...)",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedButton(
+                        onClick = { syncViewModel.cancelDelayedNotification() },
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                    ) {
+                        Text("❌ Cancelar Alerta")
+                    }
+                }
+            }
         }
     }
 }
