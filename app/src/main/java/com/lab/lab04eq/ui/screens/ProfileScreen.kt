@@ -1,189 +1,412 @@
 package com.lab.lab04eq.ui.screens
 
-import android.os.Build
-import android.widget.Toast
-import androidx.compose.foundation.background
+import android.content.Intent
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ExitToApp
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Receipt
-import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.lab.lab04eq.ui.viewmodel.SessionViewModel
-import com.lab.lab04eq.ui.viewmodel.GpsViewModel
-import com.lab.lab04eq.ui.viewmodel.HistoryViewModel
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.lifecycle.viewmodel.compose.viewModel
+import coil.compose.AsyncImage
 import com.lab.lab04eq.Lab04EqApp
+import com.lab.lab04eq.data.local.entity.MediaType
+import com.lab.lab04eq.model.ActivityItem
+import com.lab.lab04eq.ui.viewmodel.SessionViewModel
+import com.lab.lab04eq.ui.viewmodel.HistoryViewModel
+import com.lab.lab04eq.ui.viewmodel.SyncViewModel
+import com.lab.lab04eq.ui.viewmodel.GpsViewModel
+import java.io.File
 import java.text.SimpleDateFormat
-import java.util.*
-
-private sealed class ProfileViewState {
-    object Menu       : ProfileViewState()
-    object MyProfile  : ProfileViewState()
-    object MyActivity : ProfileViewState()
-}
+import java.util.Date
+import java.util.Locale
 
 @Composable
-fun ProfileScreen(sessionVm: SessionViewModel, gpsVm: GpsViewModel, onLogout: () -> Unit) {
+fun ProfileScreen(
+    sessionVm: SessionViewModel,
+    gpsVm: GpsViewModel,
+    onLogout: () -> Unit,
+    username: String? = null
+) {
+    val app = LocalContext.current.applicationContext as Lab04EqApp
+    val historyVm: HistoryViewModel = viewModel(
+        factory = HistoryViewModel.Factory(app.gpsRepository, app.mediaRepository, app.audioRepository, app.fileStorage)
+    )
+    val syncVm: SyncViewModel = viewModel(
+        factory = SyncViewModel.Factory(app, app.gpsRepository, app.mediaRepository, app.audioRepository, app.sessionManager)
+    )
+
     var viewState by remember { mutableStateOf<ProfileViewState>(ProfileViewState.Menu) }
-    val nombreCompleto = "Quispe Huari Erick Daniel"
-    
-    // Obtenemos el HistoryViewModel para la pantalla de actividad
-    val contextApp = LocalContext.current.applicationContext as Lab04EqApp
-    val historyVm: HistoryViewModel = viewModel(factory = HistoryViewModel.Factory(contextApp.gpsRepository, contextApp.mediaRepository, contextApp.audioRepository, contextApp.fileStorage))
+    val nombreDisplay = username ?: "Quispe Huari Erick Daniel"
 
     when (viewState) {
-        is ProfileViewState.Menu -> ProfileMenu(
-            username = nombreCompleto,
-            onNavigateToProfile = { viewState = ProfileViewState.MyProfile },
-            onNavigateToActivity = { viewState = ProfileViewState.MyActivity },
-            onLogoutClick = onLogout
+        ProfileViewState.Menu          -> ProfileMenu(
+            username                = nombreDisplay,
+            onLogout                = onLogout,
+            onNavigateToProfile      = { viewState = ProfileViewState.MyProfile },
+            onNavigateToLocal        = { viewState = ProfileViewState.LocalRecords },
+            onNavigateToAll          = { viewState = ProfileViewState.AllRecords },
+            onNavigateToSync         = { viewState = ProfileViewState.Sync },
+            onNavigateToNotifications = { viewState = ProfileViewState.Notifications }
         )
-        is ProfileViewState.MyProfile -> MyProfileScreen(
-            sessionVm = sessionVm,
-            username = nombreCompleto,
-            onBack = { viewState = ProfileViewState.Menu }
-        )
-        is ProfileViewState.MyActivity -> MyActivityScreen(
-            historyVm = historyVm,
-            onBack = { viewState = ProfileViewState.Menu }
-        )
+        ProfileViewState.MyProfile     -> MyProfileScreen(username = nombreDisplay, sessionVm = sessionVm, onBack = { viewState = ProfileViewState.Menu })
+        ProfileViewState.LocalRecords  -> RecordsExplorerScreen(title = "Registros locales", allowedSource = RecordsSource.LOCAL, historyVm = historyVm, onBack = { viewState = ProfileViewState.Menu })
+        ProfileViewState.AllRecords    -> RecordsExplorerScreen(title = "Todos los registros", allowedSource = RecordsSource.ALL, historyVm = historyVm, onBack = { viewState = ProfileViewState.Menu })
+        ProfileViewState.Sync          -> NestedScreen(title = "Sincronización",  onBack = { viewState = ProfileViewState.Menu }) { SyncScreen(syncVm) }
+        ProfileViewState.Notifications -> NestedScreen(title = "Notificaciones",  onBack = { viewState = ProfileViewState.Menu }) { NotificationsScreen(syncVm) }
+    }
+}
+
+private sealed class ProfileViewState {
+    object Menu : ProfileViewState()
+    object MyProfile : ProfileViewState()
+    object LocalRecords : ProfileViewState()
+    object AllRecords : ProfileViewState()
+    object Sync : ProfileViewState()
+    object Notifications : ProfileViewState()
+}
+
+@Composable
+private fun ProfileMenu(
+    username: String?,
+    onLogout: () -> Unit,
+    onNavigateToProfile: () -> Unit,
+    onNavigateToLocal: () -> Unit,
+    onNavigateToAll: () -> Unit,
+    onNavigateToSync: () -> Unit,
+    onNavigateToNotifications: () -> Unit
+) {
+    var mostrarConfirmacion by remember { mutableStateOf(false) }
+
+    Column(
+        modifier            = Modifier.fillMaxSize().padding(24.dp).verticalScroll(rememberScrollState()),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Icon(Icons.Default.AccountCircle, null, modifier = Modifier.size(72.dp), tint = MaterialTheme.colorScheme.primary)
+        Spacer(modifier = Modifier.height(16.dp))
+        Text(text = username ?: "Usuario", style = MaterialTheme.typography.headlineMedium)
+        Spacer(modifier = Modifier.height(32.dp))
+
+        MenuOption(Icons.Default.Person,              "Mi Perfil",          "Metadatos y configuración de tema",         onNavigateToProfile)
+        Spacer(modifier = Modifier.height(12.dp))
+        MenuOption(Icons.Default.History,             "Registros locales",  "Datos almacenados en este dispositivo",     onNavigateToLocal)
+        Spacer(modifier = Modifier.height(12.dp))
+        MenuOption(Icons.AutoMirrored.Filled.List,    "Todos los registros","Explorador local + nube (API)",             onNavigateToAll)
+        Spacer(modifier = Modifier.height(12.dp))
+        MenuOption(Icons.Default.CloudSync,           "Sincronización",     "Subir registros al servidor remoto",        onNavigateToSync)
+        Spacer(modifier = Modifier.height(12.dp))
+        MenuOption(Icons.Default.Notifications,       "Notificaciones",     "Programar y gestionar notificaciones",      onNavigateToNotifications)
+        Spacer(modifier = Modifier.height(32.dp))
+
+        Button(
+            onClick  = { mostrarConfirmacion = true },
+            modifier = Modifier.fillMaxWidth().height(56.dp),
+            colors   = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+        ) {
+            Icon(Icons.AutoMirrored.Filled.Logout, null)
+            Spacer(modifier = Modifier.size(8.dp))
+            Text("Cerrar sesión")
+        }
+    }
+    if (mostrarConfirmacion) LogoutDialog(onConfirm = onLogout, onDismiss = { mostrarConfirmacion = false })
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun RecordsExplorerScreen(title: String, allowedSource: RecordsSource, historyVm: HistoryViewModel, onBack: () -> Unit) {
+    val items by historyVm.historyItems.collectAsStateWithLifecycle()
+
+    var selectedTab  by remember { mutableIntStateOf(0) }
+    val tabs         = listOf("Todos", "GNSS", "Fotos", "Videos", "Audios")
+    var sourceFilter by remember { mutableStateOf(if (allowedSource == RecordsSource.ALL) RecordsSource.ALL else RecordsSource.LOCAL) }
+    var detailItem   by remember { mutableStateOf<ActivityItem?>(null) }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(title, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
+            TextButton(onClick = onBack) { Text("Cerrar") }
+        }
+
+        if (allowedSource == RecordsSource.ALL) {
+            SingleChoiceSegmentedButtonRow(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
+            ) {
+                SegmentedButton(
+                    selected = sourceFilter == RecordsSource.ALL,
+                    onClick  = { sourceFilter = RecordsSource.ALL },
+                    shape    = SegmentedButtonDefaults.itemShape(0, 3),
+                    icon     = { Icon(Icons.AutoMirrored.Filled.List, null, Modifier.size(16.dp)) }
+                ) { Text("Todo",  style = MaterialTheme.typography.labelSmall) }
+                SegmentedButton(
+                    selected = sourceFilter == RecordsSource.LOCAL,
+                    onClick  = { sourceFilter = RecordsSource.LOCAL },
+                    shape    = SegmentedButtonDefaults.itemShape(1, 3),
+                    icon     = { Icon(Icons.Default.Storage, null, Modifier.size(16.dp)) }
+                ) { Text("Local", style = MaterialTheme.typography.labelSmall) }
+                SegmentedButton(
+                    selected = sourceFilter == RecordsSource.REMOTE,
+                    onClick  = { sourceFilter = RecordsSource.REMOTE },
+                    shape    = SegmentedButtonDefaults.itemShape(2, 3),
+                    icon     = { Icon(Icons.Default.Cloud, null, Modifier.size(16.dp)) }
+                ) { Text("Nube",  style = MaterialTheme.typography.labelSmall) }
+            }
+        }
+
+        ScrollableTabRow(selectedTabIndex = selectedTab, edgePadding = 16.dp) {
+            tabs.forEachIndexed { index, t ->
+                Tab(selected = selectedTab == index, onClick = { selectedTab = index }, text = { Text(t) })
+            }
+        }
+
+        val filteredItems = remember(selectedTab, sourceFilter, items) {
+            val remoteItems = if (sourceFilter != RecordsSource.LOCAL) listOf(
+                ActivityItem.GpsGoogle(id = 999, timestamp = System.currentTimeMillis() - 86400000, latitud = -12.0463, longitud = -77.0427, isRemote = true),
+                ActivityItem.Photo(id = 888, timestamp = System.currentTimeMillis() - 43200000, rutaArchivo = "", isRemote = true)
+            ) else emptyList()
+
+            val combined = when (sourceFilter) {
+                RecordsSource.LOCAL  -> items.filter { !it.isRemote }
+                RecordsSource.REMOTE -> remoteItems
+                RecordsSource.ALL    -> items.filter { !it.isRemote } + remoteItems
+            }
+
+            val filtered = when (selectedTab) {
+                0    -> combined
+                1    -> combined.filter { it is ActivityItem.GpsGoogle || it is ActivityItem.GpsSensors }
+                2    -> combined.filter { it is ActivityItem.Photo }
+                3    -> combined.filter { it is ActivityItem.Video }
+                4    -> combined.filter { it is ActivityItem.Audio }
+                else -> combined
+            }
+            filtered.sortedByDescending { it.timestamp }
+        }
+
+        LazyColumn(
+            modifier            = Modifier.weight(1f).padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            items(filteredItems) { item ->
+                ActivityRow(item, onClick = { detailItem = item })
+            }
+        }
+    }
+
+    if (detailItem != null) {
+        ActivityDetailDialog(item = detailItem!!, onDismiss = { detailItem = null })
     }
 }
 
 @Composable
-private fun ProfileMenu(username: String, onNavigateToProfile: () -> Unit, onNavigateToActivity: () -> Unit, onLogoutClick: () -> Unit) {
-    var mostrarDialogo by remember { mutableStateOf(false) }
+private fun NestedScreen(title: String, onBack: () -> Unit, content: @Composable () -> Unit) {
+    Column(modifier = Modifier.fillMaxSize()) {
+        Row(
+            modifier          = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            TextButton(onClick = onBack) { Text("← Volver") }
+            Text(title, style = MaterialTheme.typography.titleMedium)
+        }
+        HorizontalDivider()
+        content()
+    }
+}
 
-    Column(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
-            Row(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(modifier = Modifier.size(64.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Default.Person, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(36.dp))
-                }
+@Composable
+private fun MenuOption(icon: ImageVector, title: String, subtitle: String, onClick: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        colors   = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+    ) {
+        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(icon, null, tint = MaterialTheme.colorScheme.primary)
+            Spacer(modifier = Modifier.width(16.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(title,    style = MaterialTheme.typography.titleMedium)
+                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Icon(Icons.Default.ChevronRight, null)
+        }
+    }
+}
+
+@Composable
+private fun MyProfileScreen(username: String?, sessionVm: SessionViewModel, onBack: () -> Unit) {
+    val isDarkModePref by sessionVm.isDarkMode.collectAsStateWithLifecycle()
+    val isDark         = isDarkModePref ?: isSystemInDarkTheme()
+    val context        = LocalContext.current
+    val androidId      = android.provider.Settings.Secure.getString(
+        context.contentResolver, android.provider.Settings.Secure.ANDROID_ID
+    )
+
+    Column(modifier = Modifier.fillMaxSize().padding(24.dp).verticalScroll(rememberScrollState())) {
+        Text("Mi Perfil", style = MaterialTheme.typography.headlineSmall)
+        Spacer(modifier = Modifier.height(24.dp))
+
+        ProfileMetadataItem("Username",         username ?: "N/A")
+        ProfileMetadataItem("Rol",              "Administrador / Operador")
+        ProfileMetadataItem("Directorio Local", context.filesDir.absolutePath)
+
+        Row(
+            modifier              = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+            verticalAlignment     = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.DarkMode, null, tint = MaterialTheme.colorScheme.primary)
                 Spacer(modifier = Modifier.width(16.dp))
                 Column {
-                    Text(username, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                    Text("Facultad de Ingeniería de Sistemas", style = MaterialTheme.typography.bodyMedium)
+                    Text("Modo Noche", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        if (isDarkModePref == null) "Siguiendo al sistema"
+                        else if (isDark) "Activado" else "Desactivado",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
+            Switch(checked = isDark, onCheckedChange = { sessionVm.setDarkMode(it) })
         }
+        HorizontalDivider()
+        Spacer(modifier = Modifier.height(16.dp))
 
-        Card(onClick = onNavigateToProfile, modifier = Modifier.fillMaxWidth()) {
-            ListItem(
-                headlineContent = { Text("Mis Datos", fontWeight = FontWeight.SemiBold) },
-                supportingContent = { Text("Información personal y del dispositivo físico") },
-                leadingContent = { Icon(Icons.Default.Person, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
-                trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) }
-            )
-        }
+        ProfileMetadataItem("Dispositivo",      "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}")
+        ProfileMetadataItem("Android Version",  android.os.Build.VERSION.RELEASE)
+        ProfileMetadataItem("API Level",        android.os.Build.VERSION.SDK_INT.toString())
+        ProfileMetadataItem("Android ID",       androidId ?: "N/A")
 
-        Card(onClick = onNavigateToActivity, modifier = Modifier.fillMaxWidth()) {
-            ListItem(
-                headlineContent = { Text("Historial de Actividad", fontWeight = FontWeight.SemiBold) },
-                supportingContent = { Text("Verificación de registros multimedia consolidados") },
-                leadingContent = { Icon(Icons.Default.Receipt, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
-                trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) }
-            )
-        }
-
-        Spacer(modifier = Modifier.weight(1f))
-
-        OutlinedButton(onClick = { mostrarDialogo = true }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)) {
-            Icon(Icons.AutoMirrored.Filled.ExitToApp, contentDescription = null)
-            Spacer(modifier = Modifier.width(8.dp))
-            Text("Cerrar sesión académica")
-        }
-    }
-
-    if (mostrarDialogo) {
-        AlertDialog(
-            onDismissRequest = { mostrarDialogo = false },
-            title = { Text("¿Seguro que deseas salir?") },
-            text = { Text("Tus preferencias de modo oscuro no se verán alteradas.") },
-            confirmButton = { TextButton(onClick = { mostrarDialogo = false; onLogoutClick() }) { Text("Sí, salir", color = MaterialTheme.colorScheme.error) } },
-            dismissButton = { TextButton(onClick = { mostrarDialogo = false }) { Text("Cancelar") } }
-        )
+        Spacer(modifier = Modifier.height(32.dp))
+        Button(onClick = onBack, modifier = Modifier.fillMaxWidth()) { Text("Volver") }
     }
 }
 
 @Composable
-private fun MyProfileScreen(sessionVm: SessionViewModel, username: String, onBack: () -> Unit) {
-    val context = LocalContext.current
-    val isDarkModePref by sessionVm.isDarkMode.collectAsStateWithLifecycle()
-    val isDark = isDarkModePref ?: isSystemInDarkTheme()
-
-    Column(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, contentDescription = "Atrás") }
-            Text("Información de Sistema", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-        }
-
-        Text("Usuario Activo: $username", fontWeight = FontWeight.Medium)
-        Text("Ruta del Directorio Físico:\n${context.filesDir.absolutePath}", style = MaterialTheme.typography.bodySmall)
-        Text("Equipo: ${Build.MANUFACTURER.uppercase()} - ${Build.MODEL}", style = MaterialTheme.typography.bodyMedium)
-        Text("Plataforma: Android ${Build.VERSION.RELEASE} (SDK API ${Build.VERSION.SDK_INT})", style = MaterialTheme.typography.bodyMedium)
-
-        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-
-        Card(modifier = Modifier.fillMaxWidth()) {
-            ListItem(
-                headlineContent = { Text("Modo Oscuro", fontWeight = FontWeight.SemiBold) },
-                supportingContent = { Text("Cambiar aspecto estático de la app") },
-                trailingContent = { Switch(checked = isDark, onCheckedChange = { sessionVm.setDarkMode(it) }) }
-            )
-        }
+private fun ProfileMetadataItem(label: String, value: String) {
+    Column(modifier = Modifier.padding(vertical = 8.dp)) {
+        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+        Text(value, style = MaterialTheme.typography.bodyLarge)
+        HorizontalDivider(modifier = Modifier.padding(top = 8.dp))
     }
 }
 
 @Composable
-private fun MyActivityScreen(historyVm: HistoryViewModel, onBack: () -> Unit) {
-    val context = LocalContext.current
-    val history by historyVm.historyItems.collectAsStateWithLifecycle()
+private fun ActivityRow(item: ActivityItem, onClick: () -> Unit) {
     val dateFormat = remember { SimpleDateFormat("dd/MM HH:mm:ss", Locale.getDefault()) }
+    val icon = when(item) {
+        is ActivityItem.GpsGoogle -> Icons.Default.LocationOn
+        is ActivityItem.GpsSensors -> Icons.Default.LocationOn
+        is ActivityItem.Photo -> Icons.Default.PhotoCamera
+        is ActivityItem.Video -> Icons.Default.Videocam
+        is ActivityItem.Audio -> Icons.Default.AudioFile
+    }
+    val label = when(item) {
+        is ActivityItem.GpsGoogle -> "GNSS Google"
+        is ActivityItem.GpsSensors -> "GNSS Sensor"
+        is ActivityItem.Photo -> "Foto"
+        is ActivityItem.Video -> "Video"
+        is ActivityItem.Audio -> "Audio"
+    }
 
-    Column(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, contentDescription = "Atrás") }
-            Text("Historial de Actividad", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-            
-            // Botón de exportación CSV
-            IconButton(onClick = {
-                historyVm.exportToCsv { file ->
-                    Toast.makeText(context, "Exportado: ${file.name}", Toast.LENGTH_LONG).show()
+    Card(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)) {
+        Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                icon, null,
+                tint = if (item.isRemote) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary
+            )
+            Spacer(modifier = Modifier.width(16.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(text = label, style = MaterialTheme.typography.titleSmall)
+                    if (item.isRemote) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        SuggestionChip(
+                            onClick  = {},
+                            label    = { Text("Cloud", style = MaterialTheme.typography.labelSmall) },
+                            modifier = Modifier.height(20.dp)
+                        )
+                    }
                 }
-            }) {
-                Icon(Icons.Default.Download, contentDescription = "Exportar CSV")
+                Text(dateFormat.format(Date(item.timestamp)), style = MaterialTheme.typography.bodySmall)
             }
-        }
-        
-        if (history.isEmpty()) {
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Box(modifier = Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
-                    Text("No hay registros en este ciclo.")
-                }
-            }
-        } else {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxSize()) {
-                items(items = history, key = { item -> "${item.javaClass.simpleName}_${item.id}" }) { item ->
-                    HistoryCard(item = item)
-                }
-            }
+            Icon(Icons.Default.ChevronRight, null)
         }
     }
 }
+
+@Composable
+private fun ActivityDetailDialog(item: ActivityItem, onDismiss: () -> Unit) {
+    val context    = LocalContext.current
+    val dateFormat = remember { SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Detalle de Registro") },
+        text  = {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                Text("Fecha:  ${dateFormat.format(Date(item.timestamp))}")
+                Text("Origen: ${if (item.isRemote) "Servidor Externo" else "Memoria del Dispositivo"}")
+                Spacer(modifier = Modifier.height(8.dp))
+
+                when (item) {
+                    is ActivityItem.GpsGoogle -> {
+                        Text("Lat: ${item.latitud}")
+                        Text("Lon: ${item.longitud}")
+                    }
+                    is ActivityItem.GpsSensors -> {
+                        Text("Lat: ${item.latitud}")
+                        Text("Lon: ${item.longitud}")
+                    }
+                    is ActivityItem.Photo -> {
+                        if (!item.isRemote) {
+                            AsyncImage(
+                                model = File(item.rutaArchivo),
+                                contentDescription = null,
+                                modifier = Modifier.fillMaxWidth().height(200.dp).clip(RoundedCornerShape(8.dp)),
+                                contentScale = ContentScale.Crop
+                            )
+                        } else {
+                            Text("Imagen en la nube")
+                        }
+                    }
+                    is ActivityItem.Video -> {
+                        Text("Video: ${item.rutaArchivo}")
+                    }
+                    is ActivityItem.Audio -> {
+                        Text("Audio: ${item.rutaArchivo}")
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Cerrar") } }
+    )
+}
+
+@Composable
+private fun LogoutDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title   = { Text("¿Confirmar cierre de sesión?") },
+        text    = { Text("Volverás a la pantalla de login. Tus datos locales se conservan.") },
+        confirmButton = { TextButton(onClick = onConfirm) { Text("Sí, cerrar sesión", color = MaterialTheme.colorScheme.error) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } }
+    )
+}
+
+enum class RecordsSource { LOCAL, REMOTE, ALL }

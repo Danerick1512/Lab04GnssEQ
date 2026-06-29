@@ -1,22 +1,28 @@
 package com.lab.lab04eq.ui.viewmodel
 
 import android.content.Context
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.work.Data
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
+import com.lab.lab04eq.data.remote.NetworkConstants
+import com.lab.lab04eq.data.remote.RetrofitClient
+import com.lab.lab04eq.data.remote.model.GpsSyncRequest
 import com.lab.lab04eq.data.repository.AudioRepository
 import com.lab.lab04eq.data.repository.GpsRepository
 import com.lab.lab04eq.data.repository.MediaRepository
+import com.lab.lab04eq.data.session.SessionManager
 import com.lab.lab04eq.workers.DelayedNotificationWorker
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.launch
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.asRequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
+import java.io.File
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 
@@ -34,7 +40,8 @@ class SyncViewModel(
     context: Context,
     private val gpsRepository: GpsRepository,
     private val mediaRepository: MediaRepository,
-    private val audioRepository: AudioRepository
+    private val audioRepository: AudioRepository,
+    private val sessionManager: SessionManager
 ) : ViewModel() {
 
     private val workManager = WorkManager.getInstance(context.applicationContext)
@@ -42,6 +49,9 @@ class SyncViewModel(
     // Estado para rastrear el último WorkRequest programado
     private val _lastWorkId = MutableStateFlow<UUID?>(null)
     val lastWorkId = _lastWorkId.asStateFlow()
+
+    private val _isSyncing = MutableStateFlow(false)
+    val isSyncing = _isSyncing.asStateFlow()
 
     // Fusión reactiva de 5 flujos diferentes para producir las estadísticas unificadas del Laboratorio
     val syncCounts: StateFlow<SyncCounts> = combine(
@@ -64,6 +74,73 @@ class SyncViewModel(
         started = SharingStarted.WhileSubscribed(5_000),
         initialValue = SyncCounts()
     )
+
+    fun forceSync(onResult: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            _isSyncing.value = true
+            try {
+                val token = sessionManager.accessToken.firstOrNull()
+                if (token == null) {
+                    onResult(false, "No hay sesión activa (Token faltante)")
+                    return@launch
+                }
+
+                val authHeader = "Bearer $token"
+                val slug = NetworkConstants.PROJECT_SLUG
+
+                // 1. Sincronizar GPS (Google)
+                val googlePoints = gpsRepository.googlePoints.firstOrNull() ?: emptyList()
+                if (googlePoints.isNotEmpty()) {
+                    val gpsRequests = googlePoints.map {
+                        GpsSyncRequest(
+                            latitud = it.latitud,
+                            longitud = it.longitud,
+                            altitud = it.altitud,
+                            precision = it.precision,
+                            provider = "google_flp",
+                            timestamp = it.timestamp
+                        )
+                    }
+                    RetrofitClient.apiService.syncGps(authHeader, slug, gpsRequests)
+                }
+
+                // 2. Sincronizar Multimedia (Fotos y Videos)
+                val mediaItems = mediaRepository.allMedia.firstOrNull() ?: emptyList()
+                for (item in mediaItems) {
+                    val file = File(item.rutaArchivo)
+                    if (file.exists()) {
+                        val requestFile = file.asRequestBody("multipart/form-data".toMediaTypeOrNull())
+                        val body = MultipartBody.Part.createFormData("file", file.name, requestFile)
+                        val tipo = item.tipo.toRequestBody("text/plain".toMediaTypeOrNull())
+                        val ts = item.timestamp.toString().toRequestBody("text/plain".toMediaTypeOrNull())
+                        
+                        RetrofitClient.apiService.uploadMedia(authHeader, slug, body, tipo, ts)
+                    }
+                }
+
+                // 3. Sincronizar Audios
+                val audios = audioRepository.allAudios.firstOrNull() ?: emptyList()
+                for (audio in audios) {
+                    val file = File(audio.rutaArchivo)
+                    if (file.exists()) {
+                        val requestFile = file.asRequestBody("audio/*".toMediaTypeOrNull())
+                        val body = MultipartBody.Part.createFormData("file", file.name, requestFile)
+                        val tipo = "AUDIO".toRequestBody("text/plain".toMediaTypeOrNull())
+                        val ts = audio.timestamp.toString().toRequestBody("text/plain".toMediaTypeOrNull())
+
+                        RetrofitClient.apiService.uploadMedia(authHeader, slug, body, tipo, ts)
+                    }
+                }
+
+                onResult(true, "Sincronización completada con éxito")
+            } catch (e: Exception) {
+                Log.e("SyncViewModel", "Error en sincronización", e)
+                onResult(false, "Error: ${e.message}")
+            } finally {
+                _isSyncing.value = false
+            }
+        }
+    }
 
     /**
      * Agenda una notificación en segundo plano para ejecutarse exactamente 10 segundos después
@@ -101,12 +178,13 @@ class SyncViewModel(
         private val context: Context,
         private val gpsRepository: GpsRepository,
         private val mediaRepository: MediaRepository,
-        private val audioRepository: AudioRepository
+        private val audioRepository: AudioRepository,
+        private val sessionManager: SessionManager
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             if (modelClass.isAssignableFrom(SyncViewModel::class.java)) {
-                return SyncViewModel(context, gpsRepository, mediaRepository, audioRepository) as T
+                return SyncViewModel(context, gpsRepository, mediaRepository, audioRepository, sessionManager) as T
             }
             throw IllegalArgumentException("Clase ViewModel desconocida: ${modelClass.name}")
         }

@@ -7,6 +7,7 @@ package com.lab.lab04eq.model
 sealed class ActivityItem {
     abstract val id: Long
     abstract val timestamp: Long
+    abstract val isRemote: Boolean
 
     // 1. Elemento para representar geolocalizaciones por la API de Google Play Services
     data class GpsGoogle(
@@ -14,6 +15,7 @@ sealed class ActivityItem {
         override val timestamp: Long,
         val latitud: Double,
         val longitud: Double,
+        override val isRemote: Boolean = false,
         val proveedor: String = "Google Play Services"
     ) : ActivityItem()
 
@@ -23,6 +25,7 @@ sealed class ActivityItem {
         override val timestamp: Long,
         val latitud: Double,
         val longitud: Double,
+        override val isRemote: Boolean = false,
         val proveedor: String = "Internal Sensors"
     ) : ActivityItem()
 
@@ -30,7 +33,8 @@ sealed class ActivityItem {
     data class Photo(
         override val id: Long,
         override val timestamp: Long,
-        val rutaArchivo: String
+        val rutaArchivo: String,
+        override val isRemote: Boolean = false
     ) : ActivityItem()
 
     // 4. Elemento para representar grabaciones de video de la cámara
@@ -38,7 +42,8 @@ sealed class ActivityItem {
         override val id: Long,
         override val timestamp: Long,
         val rutaArchivo: String,
-        val duracionMs: Long
+        val duracionMs: Long,
+        override val isRemote: Boolean = false
     ) : ActivityItem()
 
     // 5. Elemento para representar grabaciones por nota de voz desde el micrófono
@@ -47,6 +52,7 @@ sealed class ActivityItem {
         override val timestamp: Long,
         val rutaArchivo: String,
         val duracionMs: Long,
-        val formato: String
+        val formato: String,
+        override val isRemote: Boolean = false
     ) : ActivityItem()
 }

@@ -33,7 +33,6 @@ fun HistoryScreen(historyViewModel: HistoryViewModel) {
             
             IconButton(onClick = { 
                 historyViewModel.exportToCsv { file ->
-                    // En un caso real aquí usaríamos un Intent para compartir el archivo
                 }
             }) {
                 Text("📊 CSV", style = MaterialTheme.typography.labelSmall)
@@ -86,7 +85,6 @@ fun HistoryCard(item: ActivityItem) {
         )
     ) {
         Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            // Mostrar miniatura si es Multimedia
             if (item is ActivityItem.Photo || item is ActivityItem.Video) {
                 val path = if (item is ActivityItem.Photo) item.rutaArchivo else (item as ActivityItem.Video).rutaArchivo
                 AsyncImage(
@@ -125,6 +123,10 @@ fun HistoryCard(item: ActivityItem) {
                     is ActivityItem.Photo -> Text("Img: ${item.rutaArchivo.substringAfterLast("/")}", style = MaterialTheme.typography.bodySmall)
                     is ActivityItem.Video -> Text("Vid: ${item.rutaArchivo.substringAfterLast("/")}", style = MaterialTheme.typography.bodySmall)
                     is ActivityItem.Audio -> Text("Aud: ${item.rutaArchivo.substringAfterLast("/")}", style = MaterialTheme.typography.bodySmall)
+                }
+                
+                if (item.isRemote) {
+                    Text("Origen: Nube ☁️", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary)
                 }
             }
         }

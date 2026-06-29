@@ -39,7 +39,8 @@ class HistoryViewModel(
                     id = entity.id,
                     timestamp = entity.timestamp,
                     latitud = entity.latitud,
-                    longitud = entity.longitud
+                    longitud = entity.longitud,
+                    isRemote = false
                 )
             )
         }
@@ -51,7 +52,8 @@ class HistoryViewModel(
                     id = entity.id,
                     timestamp = entity.timestamp,
                     latitud = entity.latitud,
-                    longitud = entity.longitud
+                    longitud = entity.longitud,
+                    isRemote = false
                 )
             )
         }
@@ -63,7 +65,8 @@ class HistoryViewModel(
                     ActivityItem.Photo(
                         id = entity.id,
                         timestamp = entity.timestamp,
-                        rutaArchivo = entity.rutaArchivo
+                        rutaArchivo = entity.rutaArchivo,
+                        isRemote = false
                     )
                 )
             } else {
@@ -72,7 +75,8 @@ class HistoryViewModel(
                         id = entity.id,
                         timestamp = entity.timestamp,
                         rutaArchivo = entity.rutaArchivo,
-                        duracionMs = entity.duracionMs ?: 0L
+                        duracionMs = entity.duracionMs ?: 0L,
+                        isRemote = false
                     )
                 )
             }
@@ -86,7 +90,8 @@ class HistoryViewModel(
                     timestamp = entity.timestamp,
                     rutaArchivo = entity.rutaArchivo,
                     duracionMs = entity.duracionMs,
-                    formato = entity.formato
+                    formato = entity.formato,
+                    isRemote = false
                 )
             )
         }

@@ -3,6 +3,7 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.ksp)
     alias(libs.plugins.kotlin.compose)
+    kotlin("plugin.serialization") version "2.1.0"
 }
 
 android {
@@ -85,6 +86,12 @@ dependencies {
 
     // ── WorkManager (Notificaciones diferidas y background) ──
     implementation("androidx.work:work-runtime-ktx:2.9.0") //
+
+    // ── Network / Serialización ──
+    implementation(libs.retrofit.core)
+    implementation(libs.retrofit.kotlinx.serialization)
+    implementation(libs.okhttp.logging)
+    implementation(libs.kotlinx.serialization.json)
 
     // ── Entorno de Pruebas ──
     testImplementation(libs.junit)
