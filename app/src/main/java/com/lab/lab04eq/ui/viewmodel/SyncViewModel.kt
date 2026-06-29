@@ -26,7 +26,6 @@ import java.io.File
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 
-// Clase de datos limpia para representar el estado consolidado de registros en la app
 data class SyncCounts(
     val gpsGoogle: Int = 0,
     val gpsSensors: Int = 0,
@@ -46,14 +45,12 @@ class SyncViewModel(
 
     private val workManager = WorkManager.getInstance(context.applicationContext)
 
-    // Estado para rastrear el último WorkRequest programado
     private val _lastWorkId = MutableStateFlow<UUID?>(null)
     val lastWorkId = _lastWorkId.asStateFlow()
 
     private val _isSyncing = MutableStateFlow(false)
     val isSyncing = _isSyncing.asStateFlow()
 
-    // Fusión reactiva de 5 flujos diferentes para producir las estadísticas unificadas del Laboratorio
     val syncCounts: StateFlow<SyncCounts> = combine(
         gpsRepository.googleCount,
         gpsRepository.sensorsCount,
@@ -79,14 +76,8 @@ class SyncViewModel(
         viewModelScope.launch {
             _isSyncing.value = true
             try {
-                val token = sessionManager.accessToken.firstOrNull()
-                if (token == null) {
-                    onResult(false, "No hay sesión activa (Token faltante)")
-                    return@launch
-                }
-
-                val authHeader = "Bearer $token"
-                val slug = NetworkConstants.PROJECT_SLUG
+                // Obtenemos el slug dinámico persistido (Ejercicio 5)
+                val slug = sessionManager.projectSlug.firstOrNull() ?: NetworkConstants.PROJECT_SLUG
 
                 // 1. Sincronizar GPS (Google)
                 val googlePoints = gpsRepository.googlePoints.firstOrNull() ?: emptyList()
@@ -101,7 +92,8 @@ class SyncViewModel(
                             timestamp = it.timestamp
                         )
                     }
-                    RetrofitClient.apiService.syncGps(authHeader, slug, gpsRequests)
+                    // Ya no pasamos el token manualmente (Ejercicio 2)
+                    RetrofitClient.apiService.syncGps(slug, gpsRequests)
                 }
 
                 // 2. Sincronizar Multimedia (Fotos y Videos)
@@ -114,7 +106,7 @@ class SyncViewModel(
                         val tipo = item.tipo.toRequestBody("text/plain".toMediaTypeOrNull())
                         val ts = item.timestamp.toString().toRequestBody("text/plain".toMediaTypeOrNull())
                         
-                        RetrofitClient.apiService.uploadMedia(authHeader, slug, body, tipo, ts)
+                        RetrofitClient.apiService.uploadMedia(slug, body, tipo, ts)
                     }
                 }
 
@@ -128,7 +120,7 @@ class SyncViewModel(
                         val tipo = "AUDIO".toRequestBody("text/plain".toMediaTypeOrNull())
                         val ts = audio.timestamp.toString().toRequestBody("text/plain".toMediaTypeOrNull())
 
-                        RetrofitClient.apiService.uploadMedia(authHeader, slug, body, tipo, ts)
+                        RetrofitClient.apiService.uploadMedia(slug, body, tipo, ts)
                     }
                 }
 
@@ -142,16 +134,12 @@ class SyncViewModel(
         }
     }
 
-    /**
-     * Agenda una notificación en segundo plano para ejecutarse exactamente 10 segundos después
-     */
     fun scheduleDelayedNotification(title: String, message: String) {
         val inputData = Data.Builder()
             .putString("title", title)
             .putString("message", message)
             .build()
 
-        // Restricción de ejecución diferida de un solo tiro (10 segundos de delay)
         val notificationRequest = OneTimeWorkRequestBuilder<DelayedNotificationWorker>()
             .setInputData(inputData)
             .setInitialDelay(10, TimeUnit.SECONDS)
@@ -161,9 +149,6 @@ class SyncViewModel(
         workManager.enqueue(notificationRequest)
     }
 
-    /**
-     * Cancela la última notificación programada si aún no se ha ejecutado
-     */
     fun cancelDelayedNotification() {
         _lastWorkId.value?.let { uuid ->
             workManager.cancelWorkById(uuid)
@@ -171,9 +156,6 @@ class SyncViewModel(
         }
     }
 
-    /**
-     * Factory obligatorio para inyectar los repositorios globales desde tu Lab04EqApp
-     */
     class Factory(
         private val context: Context,
         private val gpsRepository: GpsRepository,

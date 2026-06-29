@@ -6,6 +6,7 @@ import coil.ImageLoaderFactory
 import coil.decode.VideoFrameDecoder
 import com.lab.lab04eq.data.local.AppDatabase
 import com.lab.lab04eq.data.local.FileStorageManager
+import com.lab.lab04eq.data.remote.RetrofitClient
 import com.lab.lab04eq.data.repository.AudioRepository
 import com.lab.lab04eq.data.repository.GpsRepository
 import com.lab.lab04eq.data.repository.MediaRepository
@@ -41,6 +42,9 @@ class Lab04EqApp : Application(), ImageLoaderFactory {
         fileStorage = FileStorageManager(this)
         mediaRepository = MediaRepository(database.mediaDao(), fileStorage)
         audioRepository = AudioRepository(database.audioDao(), fileStorage)
+
+        // Inicializar RetrofitClient con el SessionManager
+        RetrofitClient.init(sessionManager)
     }
 
     override fun newImageLoader(): ImageLoader {

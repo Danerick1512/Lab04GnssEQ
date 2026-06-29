@@ -1,6 +1,5 @@
 package com.lab.lab04eq.ui.viewmodel
 
-import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -9,123 +8,101 @@ import com.lab.lab04eq.data.remote.RetrofitClient
 import com.lab.lab04eq.data.remote.model.*
 import com.lab.lab04eq.data.session.SessionManager
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.Json
 
 class SessionViewModel(
     private val sessionManager: SessionManager
 ) : ViewModel() {
 
+    private val json = Json { ignoreUnknownKeys = true }
+
     val isLoggedIn = sessionManager.isLoggedIn.stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.Eagerly,
+        scope        = viewModelScope,
+        started      = SharingStarted.Eagerly,
         initialValue = false
     )
 
     val username = sessionManager.currentUsername.stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.Eagerly,
+        scope        = viewModelScope,
+        started      = SharingStarted.Eagerly,
         initialValue = null
     )
 
     val isDarkMode = sessionManager.isDarkMode.stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.Eagerly,
+        scope        = viewModelScope,
+        started      = SharingStarted.Eagerly,
         initialValue = null
     )
 
-    fun login(email: String, password: String, onResult: (Boolean) -> Unit) {
+    val currentSlug: StateFlow<String> = sessionManager.projectSlug.stateIn(
+        scope        = viewModelScope,
+        started      = SharingStarted.WhileSubscribed(5000),
+        initialValue = NetworkConstants.PROJECT_SLUG
+    )
+
+    fun updateSlug(newSlug: String) {
+        viewModelScope.launch {
+            sessionManager.setProjectSlug(newSlug)
+        }
+    }
+
+    fun login(email: String, password: String, onResult: (Boolean, String?) -> Unit) {
         viewModelScope.launch {
             try {
+                val slug = currentSlug.value
                 val response = RetrofitClient.apiService.login(
-                    NetworkConstants.PROJECT_SLUG,
-                    LoginRequest(
-                        email = email.trim(),
+                    projectSlug = slug,
+                    request     = LoginRequest(
+                        email    = email.trim(),
                         password = password.trim(),
                         deviceId = sessionManager.getDeviceId()
                     )
                 )
-
-                if (response.isSuccessful) {
-                    response.body()?.let {
-                        sessionManager.login(email.trim(), it.accessToken, it.refreshToken)
-                        onResult(true)
-                        return@launch
-                    }
+                if (response.isSuccessful && response.body() != null) {
+                    val body = response.body()!!
+                    sessionManager.login(email.trim(), body.accessToken, body.refreshToken)
+                    onResult(true, null)
+                } else {
+                    val errorMsg = parseError(response.errorBody()?.string())
+                    onResult(false, errorMsg ?: "Credenciales incorrectas")
                 }
             } catch (e: Exception) {
-                Log.e("SessionViewModel", "Login failed", e)
+                onResult(false, "Error de red: ${e.localizedMessage}")
             }
-            onResult(false)
         }
     }
 
-    fun register(email: String, password: String, onResult: (Boolean) -> Unit) {
+    fun register(email: String, password: String, onResult: (Boolean, String?) -> Unit) {
         viewModelScope.launch {
             try {
                 val response = RetrofitClient.apiService.register(
-                    NetworkConstants.PROJECT_SLUG,
-                    RegisterRequest(email = email.trim(), password = password.trim())
+                    projectSlug = currentSlug.value,
+                    request     = RegisterRequest(email.trim(), password.trim())
                 )
-                onResult(response.isSuccessful)
-                return@launch
+                if (response.isSuccessful) {
+                    onResult(true, null)
+                } else {
+                    val errorMsg = parseError(response.errorBody()?.string())
+                    onResult(false, errorMsg ?: "Error al registrar")
+                }
             } catch (e: Exception) {
-                Log.e("SessionViewModel", "Register failed", e)
+                onResult(false, "Error de red: ${e.localizedMessage}")
             }
-            onResult(false)
         }
     }
 
-    fun loginWithGoogle(googleToken: String, onResult: (Boolean) -> Unit) {
-        viewModelScope.launch {
-            try {
-                val response = RetrofitClient.apiService.loginWithGoogle(
-                    NetworkConstants.PROJECT_SLUG,
-                    GoogleLoginRequest(token = googleToken, deviceId = sessionManager.getDeviceId())
-                )
-                if (response.isSuccessful) {
-                    response.body()?.let {
-                        sessionManager.login("google_user", it.accessToken, it.refreshToken)
-                        onResult(true)
-                        return@launch
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e("SessionViewModel", "Google login failed", e)
+    private fun parseError(errorBody: String?): String? {
+        return try {
+            errorBody?.let {
+                val errorResponse = json.decodeFromString<ErrorResponse>(it)
+                errorResponse.message
             }
-            onResult(false)
-        }
-    }
-
-    fun refreshSession(onResult: (Boolean) -> Unit) {
-        viewModelScope.launch {
-            try {
-                val refreshToken = sessionManager.refreshToken.firstOrNull()
-                if (refreshToken.isNullOrBlank()) {
-                    onResult(false)
-                    return@launch
-                }
-
-                val response = RetrofitClient.apiService.refreshToken(
-                    NetworkConstants.PROJECT_SLUG,
-                    RefreshTokenRequest(
-                        refreshToken = refreshToken,
-                        deviceId = sessionManager.getDeviceId()
-                    )
-                )
-
-                if (response.isSuccessful) {
-                    response.body()?.let {
-                        sessionManager.updateTokens(it.accessToken, it.refreshToken)
-                        onResult(true)
-                        return@launch
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e("SessionViewModel", "Refresh token failed", e)
-            }
-            onResult(false)
+        } catch (e: Exception) {
+            null
         }
     }
 

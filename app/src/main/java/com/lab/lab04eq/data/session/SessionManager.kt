@@ -4,10 +4,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.provider.Settings
 import androidx.datastore.core.DataStore
-import androidx.datastore.preferences.core.Preferences
-import androidx.datastore.preferences.core.booleanPreferencesKey
-import androidx.datastore.preferences.core.edit
-import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.*
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -21,6 +18,7 @@ class SessionManager(private val context: Context) {
         val KEY_USERNAME      = stringPreferencesKey("username")
         val KEY_ACCESS_TOKEN  = stringPreferencesKey("access_token")
         val KEY_REFRESH_TOKEN = stringPreferencesKey("refresh_token")
+        val KEY_PROJECT_SLUG  = stringPreferencesKey("project_slug")
         val KEY_DARK_MODE     = booleanPreferencesKey("dark_mode")
     }
 
@@ -36,6 +34,9 @@ class SessionManager(private val context: Context) {
     val refreshToken: Flow<String?> = context.sessionDataStore.data
         .map { it[KEY_REFRESH_TOKEN] }
 
+    val projectSlug: Flow<String> = context.sessionDataStore.data
+        .map { it[KEY_PROJECT_SLUG] ?: "c13200175" }
+
     val isDarkMode: Flow<Boolean?> = context.sessionDataStore.data
         .map { it[KEY_DARK_MODE] }
 
@@ -47,6 +48,10 @@ class SessionManager(private val context: Context) {
 
     suspend fun setDarkMode(enabled: Boolean) {
         context.sessionDataStore.edit { it[KEY_DARK_MODE] = enabled }
+    }
+
+    suspend fun setProjectSlug(slug: String) {
+        context.sessionDataStore.edit { it[KEY_PROJECT_SLUG] = slug }
     }
 
     suspend fun login(username: String, accessToken: String, refreshToken: String) {
@@ -67,9 +72,11 @@ class SessionManager(private val context: Context) {
 
     suspend fun logout() {
         context.sessionDataStore.edit { prefs ->
-            val currentTheme = prefs[KEY_DARK_MODE] // Preservar diseño visual
+            val currentTheme = prefs[KEY_DARK_MODE]
+            val currentSlug = prefs[KEY_PROJECT_SLUG]
             prefs.clear()
             if (currentTheme != null) prefs[KEY_DARK_MODE] = currentTheme
+            if (currentSlug != null) prefs[KEY_PROJECT_SLUG] = currentSlug
         }
     }
 }

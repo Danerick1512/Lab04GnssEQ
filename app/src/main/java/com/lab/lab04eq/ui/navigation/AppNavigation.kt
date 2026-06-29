@@ -56,8 +56,8 @@ fun AppNavigation(gpsViewModel: GpsViewModel, sessionViewModel: SessionViewModel
         navigation(startDestination = Ruta.Login.ruta, route = "auth") {
             composable(Ruta.Login.ruta) {
                 LoginScreen(
-                    onSubmit = { user, pass, onResult ->
-                        sessionViewModel.login(user, pass, onResult)
+                    onSubmit = { email, pass, onResult ->
+                        sessionViewModel.login(email, pass, onResult)
                     },
                     onRegisterNavigate = { rootNavController.navigate(Ruta.Register.ruta) }
                 )
@@ -66,10 +66,7 @@ fun AppNavigation(gpsViewModel: GpsViewModel, sessionViewModel: SessionViewModel
                 RegisterScreen(
                     onBack = { rootNavController.popBackStack() },
                     onSubmit = { email, password, onResult ->
-                        sessionViewModel.register(email, password) { exito ->
-                            onResult(exito)
-                            if (exito) rootNavController.popBackStack()
-                        }
+                        sessionViewModel.register(email, password, onResult)
                     }
                 )
             }

@@ -17,7 +17,7 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun RegisterScreen(
     onBack:   () -> Unit,
-    onSubmit: (email: String, pass: String, onResult: (Boolean) -> Unit) -> Unit
+    onSubmit: (email: String, pass: String, onResult: (Boolean, String?) -> Unit) -> Unit
 ) {
     var email                   by remember { mutableStateOf("") }
     var password                by remember { mutableStateOf("") }
@@ -26,6 +26,8 @@ fun RegisterScreen(
     var confirmPasswordVisible  by remember { mutableStateOf(false) }
     var loading                 by remember { mutableStateOf(false) }
     var error                   by remember { mutableStateOf("") }
+
+    val isEmailValid = email.contains("@") && email.length >= 5
 
     Scaffold(
         topBar = {
@@ -48,6 +50,12 @@ fun RegisterScreen(
                 value         = email,
                 onValueChange = { email = it },
                 label         = { Text("Email") },
+                isError       = email.isNotEmpty() && !isEmailValid,
+                supportingText = {
+                    if (email.isNotEmpty() && !isEmailValid) {
+                        Text("Formato de email inválido")
+                    }
+                },
                 modifier      = Modifier.fillMaxWidth(),
                 singleLine    = true,
                 enabled       = !loading
@@ -102,13 +110,13 @@ fun RegisterScreen(
                     }
                     error   = ""
                     loading = true
-                    onSubmit(email, password) { success ->
+                    onSubmit(email, password) { success, msg ->
                         loading = false
-                        if (!success) error = "Error al registrar. Intente con otro email."
+                        if (!success) error = msg ?: "Error al registrar"
                     }
                 },
                 modifier = Modifier.fillMaxWidth().height(50.dp),
-                enabled  = !loading && email.isNotBlank() && password.isNotBlank() && confirmPassword.isNotBlank()
+                enabled  = !loading && isEmailValid && password.isNotBlank() && confirmPassword.isNotBlank()
             ) {
                 if (loading) {
                     CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)

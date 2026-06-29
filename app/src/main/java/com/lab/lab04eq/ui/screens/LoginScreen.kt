@@ -1,12 +1,6 @@
 package com.lab.lab04eq.ui.screens
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -20,7 +14,7 @@ import androidx.compose.ui.unit.dp
 
 @Composable
 fun LoginScreen(
-    onSubmit: (username: String, password: String, onResult: (Boolean) -> Unit) -> Unit,
+    onSubmit: (username: String, password: String, onResult: (Boolean, String?) -> Unit) -> Unit,
     onRegisterNavigate: () -> Unit
 ) {
     var usuario by remember { mutableStateOf("") }
@@ -28,6 +22,8 @@ fun LoginScreen(
     var passwordVisible by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf("") }
     var verificando by remember { mutableStateOf(false) }
+
+    val isEmailValid = usuario.contains("@") && usuario.length >= 5
 
     Column(
         modifier = Modifier
@@ -52,6 +48,12 @@ fun LoginScreen(
             value = usuario,
             onValueChange = { usuario = it },
             label = { Text("Email") },
+            isError = usuario.isNotEmpty() && !isEmailValid,
+            supportingText = {
+                if (usuario.isNotEmpty() && !isEmailValid) {
+                    Text("Formato de email inválido")
+                }
+            },
             singleLine = true,
             enabled = !verificando,
             modifier = Modifier.fillMaxWidth()
@@ -67,10 +69,8 @@ fun LoginScreen(
             visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
             trailingIcon = {
                 val icon = if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff
-                val description = if (passwordVisible) "Ocultar contraseña" else "Mostrar contraseña"
-
                 IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                    Icon(imageVector = icon, contentDescription = description)
+                    Icon(imageVector = icon, contentDescription = null)
                 }
             },
             modifier = Modifier.fillMaxWidth()
@@ -86,12 +86,12 @@ fun LoginScreen(
             onClick = {
                 error = ""
                 verificando = true
-                onSubmit(usuario, password) { ok ->
+                onSubmit(usuario, password) { ok, msg ->
                     verificando = false
-                    if (!ok) error = "Credenciales incorrectas. Revisa tu email y contraseña."
+                    if (!ok) error = msg ?: "Credenciales incorrectas"
                 }
             },
-            enabled = !verificando && usuario.isNotBlank() && password.isNotBlank(),
+            enabled = !verificando && isEmailValid && password.isNotBlank(),
             modifier = Modifier
                 .fillMaxWidth()
                 .height(50.dp)

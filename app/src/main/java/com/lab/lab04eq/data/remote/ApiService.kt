@@ -32,11 +32,10 @@ interface ApiService {
         @Body request: RefreshTokenRequest
     ): Response<TokenResponse>
 
-    // ── NUEVOS ENDPOINTS DE SINCRONIZACIÓN (LAB 6 EXTENDIDO) ──
+    // ── ENDPOINTS DE SINCRONIZACIÓN (Autorización automática vía Interceptor) ──
 
     @POST("{projectSlug}/sync/gps")
     suspend fun syncGps(
-        @Header("Authorization") token: String,
         @Path("projectSlug") projectSlug: String,
         @Body request: List<GpsSyncRequest>
     ): Response<Unit>
@@ -44,7 +43,6 @@ interface ApiService {
     @Multipart
     @POST("{projectSlug}/sync/media")
     suspend fun uploadMedia(
-        @Header("Authorization") token: String,
         @Path("projectSlug") projectSlug: String,
         @Part file: MultipartBody.Part,
         @Part("tipo") tipo: RequestBody,
