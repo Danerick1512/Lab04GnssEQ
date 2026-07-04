@@ -59,6 +59,9 @@ fun AppNavigation(gpsViewModel: GpsViewModel, sessionViewModel: SessionViewModel
                     onSubmit = { email, pass, onResult ->
                         sessionViewModel.login(email, pass, onResult)
                     },
+                    onGoogleLogin = { token, onResult ->
+                        sessionViewModel.loginWithGoogle(token, onResult)
+                    },
                     onRegisterNavigate = { rootNavController.navigate(Ruta.Register.ruta) }
                 )
             }

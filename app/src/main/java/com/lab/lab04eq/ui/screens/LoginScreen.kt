@@ -8,15 +8,28 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.credentials.CredentialManager
+import androidx.credentials.CustomCredential
+import androidx.credentials.GetCredentialRequest
+import com.google.android.libraries.identity.googleid.GetGoogleIdOption
+import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import com.lab.lab04eq.data.remote.NetworkConstants
+import kotlinx.coroutines.launch
 
 @Composable
 fun LoginScreen(
     onSubmit: (username: String, password: String, onResult: (Boolean, String?) -> Unit) -> Unit,
+    onGoogleLogin: (token: String, onResult: (Boolean, String?) -> Unit) -> Unit,
     onRegisterNavigate: () -> Unit
 ) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val credentialManager = CredentialManager.create(context)
+
     var usuario by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
@@ -24,6 +37,42 @@ fun LoginScreen(
     var verificando by remember { mutableStateOf(false) }
 
     val isEmailValid = usuario.contains("@") && usuario.length >= 5
+
+    fun handleGoogleLogin() {
+        scope.launch {
+            try {
+                val googleIdOption = GetGoogleIdOption.Builder()
+                    .setFilterByAuthorizedAccounts(false)
+                    .setServerClientId(NetworkConstants.GOOGLE_WEB_CLIENT_ID)
+                    .setAutoSelectEnabled(true)
+                    .build()
+
+                val request = GetCredentialRequest.Builder()
+                    .addCredentialOption(googleIdOption)
+                    .build()
+
+                val result = credentialManager.getCredential(
+                    context = context,
+                    request = request
+                )
+
+                val credential = result.credential
+                if (credential is CustomCredential &&
+                    credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
+                    val googleIdTokenCredential = GoogleIdTokenCredential.createFrom(credential.data)
+                    val idToken = googleIdTokenCredential.idToken
+
+                    verificando = true
+                    onGoogleLogin(idToken) { success, msg ->
+                        verificando = false
+                        if (!success) error = msg ?: "Error al autenticar con Google"
+                    }
+                }
+            } catch (e: Exception) {
+                error = "Cancelado o error: ${e.message}"
+            }
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -105,6 +154,18 @@ fun LoginScreen(
             } else {
                 Text("Ingresar")
             }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        OutlinedButton(
+            onClick = { handleGoogleLogin() },
+            enabled = !verificando,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(50.dp)
+        ) {
+            Text("Continuar con Google")
         }
 
         Spacer(modifier = Modifier.height(12.dp))

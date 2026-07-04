@@ -9,7 +9,6 @@ import com.lab.lab04eq.data.remote.model.*
 import com.lab.lab04eq.data.session.SessionManager
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
@@ -53,9 +52,8 @@ class SessionViewModel(
     fun login(email: String, password: String, onResult: (Boolean, String?) -> Unit) {
         viewModelScope.launch {
             try {
-                val slug = currentSlug.value
                 val response = RetrofitClient.apiService.login(
-                    projectSlug = slug,
+                    projectSlug = currentSlug.value,
                     request     = LoginRequest(
                         email    = email.trim(),
                         password = password.trim(),
@@ -88,6 +86,30 @@ class SessionViewModel(
                 } else {
                     val errorMsg = parseError(response.errorBody()?.string())
                     onResult(false, errorMsg ?: "Error al registrar")
+                }
+            } catch (e: Exception) {
+                onResult(false, "Error de red: ${e.localizedMessage}")
+            }
+        }
+    }
+
+    fun loginWithGoogle(googleToken: String, onResult: (Boolean, String?) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val response = RetrofitClient.apiService.loginWithGoogle(
+                    projectSlug = currentSlug.value,
+                    request     = GoogleLoginRequest(
+                        token    = googleToken,
+                        deviceId = sessionManager.getDeviceId()
+                    )
+                )
+                if (response.isSuccessful && response.body() != null) {
+                    val body = response.body()!!
+                    sessionManager.login("Google User", body.accessToken, body.refreshToken)
+                    onResult(true, null)
+                } else {
+                    val errorMsg = parseError(response.errorBody()?.string())
+                    onResult(false, errorMsg ?: "Error al autenticar con Google")
                 }
             } catch (e: Exception) {
                 onResult(false, "Error de red: ${e.localizedMessage}")
