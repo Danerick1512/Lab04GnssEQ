@@ -31,6 +31,12 @@ class SessionViewModel(
         initialValue = null
     )
 
+    val userId = sessionManager.userId.stateIn(
+        scope        = viewModelScope,
+        started      = SharingStarted.Eagerly,
+        initialValue = null
+    )
+
     val isDarkMode = sessionManager.isDarkMode.stateIn(
         scope        = viewModelScope,
         started      = SharingStarted.Eagerly,
@@ -62,7 +68,18 @@ class SessionViewModel(
                 )
                 if (response.isSuccessful && response.body() != null) {
                     val body = response.body()!!
-                    sessionManager.login(email.trim(), body.accessToken, body.refreshToken)
+
+                    // Recuperamos el user_id de /me
+                    var finalUserId: String? = null
+                    val meResponse = RetrofitClient.apiService.me(
+                        currentSlug.value,
+                        "Bearer ${body.accessToken}"
+                    )
+                    if (meResponse.isSuccessful) {
+                        finalUserId = meResponse.body()?.user?.userId
+                    }
+
+                    sessionManager.login(email.trim(), body.accessToken, body.refreshToken, finalUserId)
                     onResult(true, null)
                 } else {
                     val errorMsg = parseError(response.errorBody()?.string())
@@ -105,7 +122,18 @@ class SessionViewModel(
                 )
                 if (response.isSuccessful && response.body() != null) {
                     val body = response.body()!!
-                    sessionManager.login("Google User", body.accessToken, body.refreshToken)
+
+                    // Recuperamos el user_id de /me
+                    var finalUserId: String? = null
+                    val meResponse = RetrofitClient.apiService.me(
+                        currentSlug.value,
+                        "Bearer ${body.accessToken}"
+                    )
+                    if (meResponse.isSuccessful) {
+                        finalUserId = meResponse.body()?.user?.userId
+                    }
+
+                    sessionManager.login("Google User", body.accessToken, body.refreshToken, finalUserId)
                     onResult(true, null)
                 } else {
                     val errorMsg = parseError(response.errorBody()?.string())

@@ -2,7 +2,7 @@ package com.lab.lab04eq.data.remote
 
 object NetworkConstants {
     // Usamos la URL de producción para que funcione en dispositivos físicos y emuladores
-    const val BASE_URL     = "https://platform-api-f2ts.onrender.com/"
+    const val BASE_URL     = "https://platform-api.kankunapaq.com/"
     const val PROJECT_SLUG = "c13200175"
 
     /**

@@ -34,6 +34,11 @@ import com.lab.lab04eq.ui.viewmodel.SessionViewModel
 import com.lab.lab04eq.ui.viewmodel.HistoryViewModel
 import com.lab.lab04eq.ui.viewmodel.SyncViewModel
 import com.lab.lab04eq.ui.viewmodel.GpsViewModel
+import com.lab.lab04eq.data.remote.RetrofitClient
+import com.lab.lab04eq.data.remote.NetworkConstants
+import com.lab.lab04eq.data.remote.model.GeoEventResponse
+import kotlinx.coroutines.flow.first
+import java.time.Instant
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -68,8 +73,8 @@ fun ProfileScreen(
             onNavigateToNotifications = { viewState = ProfileViewState.Notifications }
         )
         ProfileViewState.MyProfile     -> MyProfileScreen(username = nombreDisplay, sessionVm = sessionVm, onBack = { viewState = ProfileViewState.Menu })
-        ProfileViewState.LocalRecords  -> RecordsExplorerScreen(title = "Registros locales", allowedSource = RecordsSource.LOCAL, historyVm = historyVm, onBack = { viewState = ProfileViewState.Menu })
-        ProfileViewState.AllRecords    -> RecordsExplorerScreen(title = "Todos los registros", allowedSource = RecordsSource.ALL, historyVm = historyVm, onBack = { viewState = ProfileViewState.Menu })
+        ProfileViewState.LocalRecords  -> RecordsExplorerScreen(title = "Registros locales", allowedSource = RecordsSource.LOCAL, historyVm = historyVm, sessionVm = sessionVm, onBack = { viewState = ProfileViewState.Menu })
+        ProfileViewState.AllRecords    -> RecordsExplorerScreen(title = "Todos los registros", allowedSource = RecordsSource.ALL, historyVm = historyVm, sessionVm = sessionVm, onBack = { viewState = ProfileViewState.Menu })
         ProfileViewState.Sync          -> NestedScreen(title = "Sincronización",  onBack = { viewState = ProfileViewState.Menu }) { SyncScreen(syncVm) }
         ProfileViewState.Notifications -> NestedScreen(title = "Notificaciones",  onBack = { viewState = ProfileViewState.Menu }) { NotificationsScreen(syncVm) }
     }
@@ -131,13 +136,42 @@ private fun ProfileMenu(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun RecordsExplorerScreen(title: String, allowedSource: RecordsSource, historyVm: HistoryViewModel, onBack: () -> Unit) {
+private fun RecordsExplorerScreen(title: String, allowedSource: RecordsSource, historyVm: HistoryViewModel, sessionVm: SessionViewModel, onBack: () -> Unit) {
     val items by historyVm.historyItems.collectAsStateWithLifecycle()
 
     var selectedTab  by remember { mutableIntStateOf(0) }
     val tabs         = listOf("Todos", "GNSS", "Fotos", "Videos", "Audios")
     var sourceFilter by remember { mutableStateOf(if (allowedSource == RecordsSource.ALL) RecordsSource.ALL else RecordsSource.LOCAL) }
+    var remoteRecords by remember { mutableStateOf<List<GeoEventResponse>>(emptyList()) }
+    var isLoadingRemote by remember { mutableStateOf(false) }
     var detailItem   by remember { mutableStateOf<ActivityItem?>(null) }
+
+    val app = LocalContext.current.applicationContext as Lab04EqApp
+
+    LaunchedEffect(sourceFilter) {
+        if (sourceFilter != RecordsSource.LOCAL) {
+            isLoadingRemote = true
+            try {
+                val userId = sessionVm.userId.value // O sessionManager.userId.first()
+                val token = app.sessionManager.accessToken.first()
+                val authHeader = if (token != null) "Bearer $token" else null
+
+                val response = RetrofitClient.apiService.listGeoEventsORM(
+                    NetworkConstants.PROJECT_SLUG,
+                    authHeader,
+                    userId = userId,
+                    limit = 20
+                )
+                if (response.isSuccessful) {
+                    remoteRecords = response.body() ?: emptyList()
+                }
+            } catch (e: Exception) {
+                // Error silent
+            } finally {
+                isLoadingRemote = false
+            }
+        }
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -176,16 +210,26 @@ private fun RecordsExplorerScreen(title: String, allowedSource: RecordsSource, h
             }
         }
 
-        val filteredItems = remember(selectedTab, sourceFilter, items) {
-            val remoteItems = if (sourceFilter != RecordsSource.LOCAL) listOf(
-                ActivityItem.GpsGoogle(id = 999, timestamp = System.currentTimeMillis() - 86400000, latitud = -12.0463, longitud = -77.0427, isRemote = true),
-                ActivityItem.Photo(id = 888, timestamp = System.currentTimeMillis() - 43200000, rutaArchivo = "", isRemote = true)
-            ) else emptyList()
+        val filteredItems = remember(selectedTab, sourceFilter, items, remoteRecords) {
+            val mappedRemote = remoteRecords.map { res ->
+                val ts = try {
+                    Instant.parse(res.recordedAt).toEpochMilli()
+                } catch (e: Exception) {
+                    System.currentTimeMillis()
+                }
+                ActivityItem.GpsGoogle(
+                    id = res.id.toLong(),
+                    timestamp = ts,
+                    latitud = res.latitude,
+                    longitud = res.longitude,
+                    isRemote = true
+                )
+            }
 
             val combined = when (sourceFilter) {
                 RecordsSource.LOCAL  -> items.filter { !it.isRemote }
-                RecordsSource.REMOTE -> remoteItems
-                RecordsSource.ALL    -> items.filter { !it.isRemote } + remoteItems
+                RecordsSource.REMOTE -> mappedRemote
+                RecordsSource.ALL    -> items.filter { !it.isRemote } + mappedRemote
             }
 
             val filtered = when (selectedTab) {
@@ -250,6 +294,7 @@ private fun MenuOption(icon: ImageVector, title: String, subtitle: String, onCli
 @Composable
 private fun MyProfileScreen(username: String?, sessionVm: SessionViewModel, onBack: () -> Unit) {
     val isDarkModePref by sessionVm.isDarkMode.collectAsStateWithLifecycle()
+    val userId         by sessionVm.userId.collectAsStateWithLifecycle()
     val isDark         = isDarkModePref ?: isSystemInDarkTheme()
     val context        = LocalContext.current
     val androidId      = android.provider.Settings.Secure.getString(
@@ -261,6 +306,7 @@ private fun MyProfileScreen(username: String?, sessionVm: SessionViewModel, onBa
         Spacer(modifier = Modifier.height(24.dp))
 
         ProfileMetadataItem("Username",         username ?: "N/A")
+        ProfileMetadataItem("User ID (UUID)",   userId ?: "Cargando...")
         ProfileMetadataItem("Rol",              "Administrador / Operador")
         ProfileMetadataItem("Directorio Local", context.filesDir.absolutePath)
 

@@ -16,6 +16,7 @@ class SessionManager(private val context: Context) {
     private companion object {
         val KEY_IS_LOGGED_IN  = booleanPreferencesKey("is_logged_in")
         val KEY_USERNAME      = stringPreferencesKey("username")
+        val KEY_USER_ID       = stringPreferencesKey("user_id")
         val KEY_ACCESS_TOKEN  = stringPreferencesKey("access_token")
         val KEY_REFRESH_TOKEN = stringPreferencesKey("refresh_token")
         val KEY_PROJECT_SLUG  = stringPreferencesKey("project_slug")
@@ -27,6 +28,9 @@ class SessionManager(private val context: Context) {
 
     val currentUsername: Flow<String?> = context.sessionDataStore.data
         .map { it[KEY_USERNAME] }
+
+    val userId: Flow<String?> = context.sessionDataStore.data
+        .map { it[KEY_USER_ID] }
 
     val accessToken: Flow<String?> = context.sessionDataStore.data
         .map { it[KEY_ACCESS_TOKEN] }
@@ -54,12 +58,13 @@ class SessionManager(private val context: Context) {
         context.sessionDataStore.edit { it[KEY_PROJECT_SLUG] = slug }
     }
 
-    suspend fun login(username: String, accessToken: String, refreshToken: String) {
+    suspend fun login(username: String, accessToken: String, refreshToken: String, userId: String? = null) {
         context.sessionDataStore.edit { prefs ->
             prefs[KEY_IS_LOGGED_IN]  = true
             prefs[KEY_USERNAME]      = username
             prefs[KEY_ACCESS_TOKEN]  = accessToken
             prefs[KEY_REFRESH_TOKEN] = refreshToken
+            if (userId != null) prefs[KEY_USER_ID] = userId
         }
     }
 
