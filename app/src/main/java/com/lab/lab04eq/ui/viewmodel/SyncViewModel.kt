@@ -27,9 +27,10 @@ import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
 import java.time.Instant
-import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
 import java.util.UUID
 import java.util.concurrent.TimeUnit
+import kotlin.math.round
 
 data class SyncCounts(
     val gpsGoogle: Int = 0,
@@ -89,58 +90,74 @@ class SyncViewModel(
         initialValue = SyncCounts()
     )
 
+    private fun Double.round(decimals: Int): Double {
+        var multiplier = 1.0
+        repeat(decimals) { multiplier *= 10 }
+        return round(this * multiplier) / multiplier
+    }
+
+    /**
+     * Sincroniza los eventos GPS. 
+     * CORRECCIÓN CRÍTICA: Se eliminó el token manual para evitar duplicidad de cabeceras 
+     * y se ajustó el formato de fecha (ISO sin milisegundos) para compatibilidad con el backend.
+     */
     fun sync(onResult: (Boolean) -> Unit) {
         viewModelScope.launch {
             _isSyncing.value = true
             _syncProgress.value = 0f
-            _syncMessage.value = "Iniciando sincronización..."
+            _syncMessage.value = "Sincronizando..."
             try {
                 val googlePoints = gpsRepository.googlePoints.first()
                 val sensorsPoints = gpsRepository.sensorsPoints.first()
 
                 val deviceId = sessionManager.getDeviceId()
                 val userId = sessionManager.userId.first()
-                val token = sessionManager.accessToken.first()
-                val authHeader = if (token != null) "Bearer $token" else null
+                val currentSlug = sessionManager.projectSlug.first()
+                
+                // IMPORTANTE: Dejar en null para que el Interceptor de RetrofitClient añada la cabecera única.
+                val authHeader: String? = null
 
                 if (userId == null) {
-                    _syncMessage.value = "Error: No se encontró el ID de usuario. Por favor, cierra sesión e inicia sesión de nuevo."
-                    _isSyncing.value = false
+                    _syncMessage.value = "Error: Sesión no válida"
                     onResult(false)
                     return@launch
                 }
 
                 val deviceModel = "${Build.MANUFACTURER} ${Build.MODEL}"
-                val formatter = DateTimeFormatter.ISO_INSTANT
                 var successCount = 0
                 val totalToSync = googlePoints.size + sensorsPoints.size
 
                 if (totalToSync == 0) {
-                    _syncMessage.value = "No hay datos para sincronizar"
+                    _syncMessage.value = "No hay datos pendientes"
                     _isSyncing.value = false
-                    _syncProgress.value = 1f
                     onResult(true)
                     return@launch
                 }
 
                 var currentItem = 0
+                
                 googlePoints.forEach { point ->
                     if (point.latitud != 0.0) {
                         val request = GeoEventRequest(
                             userId = userId,
-                            latitude = point.latitud,
-                            longitude = point.longitud,
-                            accuracy = point.precision.toDouble(),
-                            speed = 0.0, // GpsGoogleEntity doesn't have speed in this project?
-                            heading = 0.0, // or bearing
+                            latitude = point.latitud.round(7),
+                            longitude = point.longitud.round(7),
+                            altitude = point.altitud.round(2),
+                            accuracy = point.precision.toDouble().round(2),
+                            speed = 0.0,
+                            heading = 0.0,
                             eventType = "gps_google",
                             deviceId = deviceId,
                             appVersion = "1.0.0",
                             deviceModel = deviceModel,
-                            recordedAt = formatter.format(Instant.ofEpochMilli(point.timestamp))
+                            // ISO-8601 truncado a segundos (sin milisegundos) para evitar errores de parsing en FastAPI/Postgres
+                            recordedAt = Instant.ofEpochMilli(point.timestamp).truncatedTo(ChronoUnit.SECONDS).toString()
                         )
-                        val response = RetrofitClient.apiService.createGeoEventORM(NetworkConstants.PROJECT_SLUG, authHeader, request)
+                        
+                        Log.d("SyncDebug", "Enviando punto google: $request")
+                        val response = RetrofitClient.apiService.createGeoEventORM(currentSlug, authHeader, request)
                         if (response.isSuccessful) successCount++
+                        else Log.e("SyncDebug", "Error ${response.code()}: ${response.errorBody()?.string()}")
                     }
                     currentItem++
                     _syncProgress.value = currentItem.toFloat() / totalToSync
@@ -150,17 +167,23 @@ class SyncViewModel(
                     if (point.latitud != 0.0) {
                         val request = GeoEventRequest(
                             userId = userId,
-                            latitude = point.latitud,
-                            longitude = point.longitud,
-                            altitude = point.altitud,
+                            latitude = point.latitud.round(7),
+                            longitude = point.longitud.round(7),
+                            altitude = point.altitud.round(2),
+                            accuracy = 0.0,
+                            speed = 0.0,
+                            heading = 0.0,
                             eventType = "gps_sensors",
                             deviceId = deviceId,
                             appVersion = "1.0.0",
                             deviceModel = deviceModel,
-                            recordedAt = formatter.format(Instant.ofEpochMilli(point.timestamp))
+                            recordedAt = Instant.ofEpochMilli(point.timestamp).truncatedTo(ChronoUnit.SECONDS).toString()
                         )
-                        val response = RetrofitClient.apiService.createGeoEventORM(NetworkConstants.PROJECT_SLUG, authHeader, request)
+
+                        Log.d("SyncDebug", "Enviando punto sensors: $request")
+                        val response = RetrofitClient.apiService.createGeoEventORM(currentSlug, authHeader, request)
                         if (response.isSuccessful) successCount++
+                        else Log.e("SyncDebug", "Error ${response.code()}: ${response.errorBody()?.string()}")
                     }
                     currentItem++
                     _syncProgress.value = currentItem.toFloat() / totalToSync
@@ -168,14 +191,15 @@ class SyncViewModel(
 
                 if (successCount > 0) {
                     gpsRepository.clearAll()
-                    _syncMessage.value = "Sincronizados $successCount registros con éxito"
+                    _syncMessage.value = "Éxito: $successCount registros sincronizados"
                     refreshCloudData()
                 } else {
-                    _syncMessage.value = "Error al sincronizar con el servidor"
+                    _syncMessage.value = "Error: El servidor rechazó los datos"
                 }
                 onResult(successCount > 0)
             } catch (e: Exception) {
-                _syncMessage.value = "Error: ${e.localizedMessage}"
+                Log.e("SyncDebug", "Fallo total de sincronización", e)
+                _syncMessage.value = "Error de red"
                 onResult(false)
             } finally {
                 _isSyncing.value = false
@@ -187,24 +211,14 @@ class SyncViewModel(
         viewModelScope.launch {
             _isLoadingCloud.value = true
             try {
-                // Bug intencional mencionado en la guía (sección 16/20):
-                // Se usa currentUsername (email) en lugar de userId (UUID)
-                val userIdForFilter = sessionManager.currentUsername.first()
-                val token = sessionManager.accessToken.first()
-                val authHeader = if (token != null) "Bearer $token" else null
-
-                val response = RetrofitClient.apiService.listGeoEventsORM(
-                    NetworkConstants.PROJECT_SLUG,
-                    authHeader,
-                    userId = userIdForFilter,
-                    limit = 10
-                )
-
+                val userIdForFilter = sessionManager.userId.first()
+                val currentSlug = sessionManager.projectSlug.first()
+                val response = RetrofitClient.apiService.listGeoEventsORM(currentSlug, null, userId = userIdForFilter)
                 if (response.isSuccessful) {
                     _cloudRecords.value = response.body() ?: emptyList()
                 }
             } catch (e: Exception) {
-                // Silencioso
+                Log.e("SyncDebug", "Error refresh", e)
             } finally {
                 _isLoadingCloud.value = false
             }
@@ -215,7 +229,6 @@ class SyncViewModel(
         viewModelScope.launch {
             _isSyncing.value = true
             try {
-                // Obtenemos el slug dinámico persistido (Ejercicio 5)
                 val slug = sessionManager.projectSlug.firstOrNull() ?: NetworkConstants.PROJECT_SLUG
 
                 // 1. Sincronizar GPS (Google)
@@ -231,7 +244,6 @@ class SyncViewModel(
                             timestamp = it.timestamp
                         )
                     }
-                    // Ya no pasamos el token manualmente (Ejercicio 2)
                     RetrofitClient.apiService.syncGps(slug, gpsRequests)
                 }
 
