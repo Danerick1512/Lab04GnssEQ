@@ -21,6 +21,7 @@ class SessionManager(private val context: Context) {
         val KEY_REFRESH_TOKEN = stringPreferencesKey("refresh_token")
         val KEY_PROJECT_SLUG  = stringPreferencesKey("project_slug")
         val KEY_DARK_MODE     = booleanPreferencesKey("dark_mode")
+        val KEY_NOTIFICATIONS_ENABLED = booleanPreferencesKey("notifications_enabled")
     }
 
     val isLoggedIn: Flow<Boolean> = context.sessionDataStore.data
@@ -44,6 +45,9 @@ class SessionManager(private val context: Context) {
     val isDarkMode: Flow<Boolean?> = context.sessionDataStore.data
         .map { it[KEY_DARK_MODE] }
 
+    val notificationsEnabled: Flow<Boolean> = context.sessionDataStore.data
+        .map { it[KEY_NOTIFICATIONS_ENABLED] ?: true }
+
     @SuppressLint("HardwareIds")
     fun getDeviceId(): String {
         return Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)
@@ -52,6 +56,10 @@ class SessionManager(private val context: Context) {
 
     suspend fun setDarkMode(enabled: Boolean) {
         context.sessionDataStore.edit { it[KEY_DARK_MODE] = enabled }
+    }
+
+    suspend fun setNotificationsEnabled(enabled: Boolean) {
+        context.sessionDataStore.edit { it[KEY_NOTIFICATIONS_ENABLED] = enabled }
     }
 
     suspend fun setProjectSlug(slug: String) {

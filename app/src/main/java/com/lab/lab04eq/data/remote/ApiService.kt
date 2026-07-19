@@ -70,4 +70,11 @@ interface ApiService {
         @Part("tipo") tipo: RequestBody,
         @Part("timestamp") timestamp: RequestBody
     ): Response<Unit>
+
+    @POST("{projectSlug}/device-tokens/")
+    suspend fun updateFcmToken(
+        @Path("projectSlug") projectSlug: String,
+        @Header("Authorization") token: String?,
+        @Body request: DeviceTokenRequest
+    ): Response<Unit>
 }

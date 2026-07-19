@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "231733115595",
+    "project_id": "erickqh-demodata-g4b1",
+    "storage_bucket": "erickqh-demodata-g4b1.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:231733115595:android:a9d5cb96c1c983c46f794e",
+        "android_client_info": {
+          "package_name": "com.lab.lab04eq"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDDqQuHZroH2ZXPa-CfzasikEVLskI6efI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

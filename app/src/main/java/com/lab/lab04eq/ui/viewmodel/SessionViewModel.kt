@@ -3,14 +3,17 @@ package com.lab.lab04eq.ui.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.google.firebase.messaging.FirebaseMessaging
 import com.lab.lab04eq.data.remote.NetworkConstants
 import com.lab.lab04eq.data.remote.RetrofitClient
 import com.lab.lab04eq.data.remote.model.*
 import com.lab.lab04eq.data.session.SessionManager
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 import kotlinx.serialization.json.Json
 
 class SessionViewModel(
@@ -41,6 +44,12 @@ class SessionViewModel(
         scope        = viewModelScope,
         started      = SharingStarted.Eagerly,
         initialValue = null
+    )
+
+    val notificationsEnabled = sessionManager.notificationsEnabled.stateIn(
+        scope        = viewModelScope,
+        started      = SharingStarted.Eagerly,
+        initialValue = true
     )
 
     val currentSlug: StateFlow<String> = sessionManager.projectSlug.stateIn(
@@ -80,6 +89,7 @@ class SessionViewModel(
                     }
 
                     sessionManager.login(email.trim(), body.accessToken, body.refreshToken, finalUserId)
+                    fetchAndSyncToken()
                     onResult(true, null)
                 } else {
                     val errorMsg = parseError(response.errorBody()?.string())
@@ -134,6 +144,7 @@ class SessionViewModel(
                     }
 
                     sessionManager.login("Google User", body.accessToken, body.refreshToken, finalUserId)
+                    fetchAndSyncToken()
                     onResult(true, null)
                 } else {
                     val errorMsg = parseError(response.errorBody()?.string())
@@ -158,6 +169,53 @@ class SessionViewModel(
 
     fun setDarkMode(enabled: Boolean) {
         viewModelScope.launch { sessionManager.setDarkMode(enabled) }
+    }
+
+    fun setNotificationsEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            sessionManager.setNotificationsEnabled(enabled)
+            if (enabled) {
+                FirebaseMessaging.getInstance().subscribeToTopic("all_users")
+            } else {
+                FirebaseMessaging.getInstance().unsubscribeFromTopic("all_users")
+            }
+        }
+    }
+
+    private fun fetchAndSyncToken() {
+        viewModelScope.launch {
+            try {
+                val token = FirebaseMessaging.getInstance().token.await()
+                syncFcmToken(token)
+            } catch (e: Exception) {
+                // Error al obtener token de Firebase
+            }
+        }
+    }
+
+    fun syncFcmToken(fcmToken: String) {
+        viewModelScope.launch {
+            try {
+                val token = sessionManager.accessToken.firstOrNull()
+                val uId = sessionManager.userId.firstOrNull()
+                val uName = sessionManager.currentUsername.firstOrNull()
+
+                if (token != null) {
+                    RetrofitClient.apiService.updateFcmToken(
+                        projectSlug = currentSlug.value,
+                        token = "Bearer $token",
+                        request = DeviceTokenRequest(
+                            userId = uId,
+                            userName = uName,
+                            fcmToken = fcmToken,
+                            deviceId = sessionManager.getDeviceId()
+                        )
+                    )
+                }
+            } catch (e: Exception) {
+                // Manejar error de red
+            }
+        }
     }
 
     fun logout() {
